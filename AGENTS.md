@@ -109,6 +109,11 @@ Everything below is a deliberate v0 scope cut, not an oversight:
   a running `Main`; not exercised — see `LiaisonTests/Liaison/ServerTest.lean`'s
   doc comment).
 
+## Git
+
+**Never run `git push` in this repo.** Commits are fine when asked for; pushing
+is always left to the user to review and do themselves.
+
 ## Deviations from the plan/docs, and why
 
 - **`Tag.lean` folds `orgId` into the root HMAC input** (`s₀ = HMAC(rootKey,
