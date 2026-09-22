@@ -1,0 +1,16 @@
+{"version": "1.2.0",
+ "packagesDir": ".lake/packages",
+ "packages":
+ [{"url": "https://github.com/typednotes/linen",
+   "type": "git",
+   "subDir": null,
+   "scope": "",
+   "rev": "192c2bd946010075482b94d8061e74976c40f4ad",
+   "name": "linen",
+   "manifestFile": "lake-manifest.json",
+   "inputRev": "v1.0.0",
+   "inherited": false,
+   "configFile": "lakefile.lean"}],
+ "name": "liaison",
+ "lakeDir": ".lake",
+ "fixedToolchain": false}
