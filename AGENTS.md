@@ -27,6 +27,12 @@ hold, make (or refuse) one outbound call, record the attempt. It is built on
 - `Liaison/Egress/Provider.lean` — `callProvider` (generic HTTP egress) and
   `callInference` (a loud, structured-denial stub — see below).
 - `Liaison/Audit.lean` — `recordAttempt`, writing to `audit_log`.
+- `sql/0001_audit_log.sql` — the `audit_log` table, the one table `liaison`
+  owns (`credit_holds`/`credit_ledger` are `ledger`'s).
+  `typednotes-infra` reads `sql/*.sql` from GitHub at the release tag and
+  applies it as an `infra` `postgresMigrations` history; `liaison` itself
+  never migrates. Shipped migrations are append-only — add a new
+  `sql/NNNN_*.sql` file instead of editing one.
 - `Liaison/Server.lean` — the HTTP wire format: parses a warrant + request
   off the wire, calls `authorize` → `withReservation` → `callProvider`/
   `callInference`, records the attempt, shapes the response.

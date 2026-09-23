@@ -30,6 +30,15 @@ LIAISON_ROOT_KEY=... DATABASE_URL=... SECRETS_HOST=... SECRETS_TOKEN=... \
   lake exe liaison
 ```
 
+## Schema
+
+`liaison` owns one table, `audit_log` (`sql/0001_audit_log.sql`), and writes
+`ledger`'s `credit_holds`/`credit_ledger`. It never migrates at startup: in
+production `typednotes-infra` reads `sql/*.sql` at the release tag and
+applies it as a declared migration history before the container rolls out
+(the container also waits for `ledger`'s history, whose tables it writes). For a local database, apply the
+app's, then `ledger`'s, then `sql/*.sql` here, in that order.
+
 ## Docker usage
 
 Local image builds use [`podman`](https://podman.io/), not `docker`:
