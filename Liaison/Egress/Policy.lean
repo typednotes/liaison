@@ -14,7 +14,10 @@
   - `urlWithinBase` + `parseTarget` — the outbound URL stays under the
     credential's `base_url`, so a token can only ever be sent to the host (and
     path prefix) it was issued for.
-  - `needsRefresh` — when a Google access token is due for a refresh.
+  - `checkCallerQuery` — a caller's URL may not carry the query parameters
+    the credential appends (an Azure SAS), so the credential's signature is
+    the only one on the request.
+  - `needsRefresh` — when an OAuth access token is due for a refresh.
 -/
 
 import Liaison.Egress.Credential
@@ -172,9 +175,35 @@ def checkUrl (base url : String) : Option Target := do
   if t.isSecure != b.isSecure || t.host != b.host || t.port != b.port then none
   return t
 
--- ── Google refresh ───────────────────────────────────────────────────
+-- ── Query parameters the credential appends ──────────────────────────
 
-/-- A Google access token is refreshed when `expires_at - 60 ≤ now` (Unix
+/-- The query keys (lowercased) a caller's URL may not use with this
+    credential: an Azure SAS's parameters. -/
+def reservedQueryKeys : CredentialAuth → List String
+  | .azureSas _ => sasParamNames
+  | _ => []
+
+/-- The keys of a raw query string, percent-decoded and lowercased; `none`
+    if a key does not decode (refused, rather than guessed at). -/
+def queryKeys (query : String) : Option (List String) :=
+  if query.isEmpty then some []
+  else (query.splitOn "&").mapM (fun p => (percentDecode ((p.splitOn "=").headD "")).map (·.toLower))
+
+/-- `true` iff no key of the caller's query is reserved. -/
+def checkCallerQuery (reserved : List String) (query : String) : Bool :=
+  match queryKeys query with
+  | some keys => !keys.any (reserved.contains ·)
+  | none => false
+
+/-- A raw query with `extra` appended (`&`-joined; either may be empty). -/
+def appendQuery (query extra : String) : String :=
+  if query.isEmpty then extra
+  else if extra.isEmpty then query
+  else query ++ "&" ++ extra
+
+-- ── OAuth refresh ────────────────────────────────────────────────────
+
+/-- An OAuth access token is refreshed when `expires_at - 60 ≤ now` (Unix
     seconds, `connections.md` §5). Written without subtraction so it is
     right for `expires_at < 60` too. -/
 def needsRefresh (expiresAt now : Nat) : Bool :=

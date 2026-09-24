@@ -8,7 +8,7 @@ import LiaisonTests.Liaison.ClockTest
 import LiaisonTests.Liaison.Egress.CredentialTest
 import LiaisonTests.Liaison.Egress.PolicyTest
 import LiaisonTests.Liaison.Egress.SecretsTest
-import LiaisonTests.Liaison.Egress.GoogleTest
+import LiaisonTests.Liaison.Egress.OAuthTest
 import LiaisonTests.Liaison.Egress.S3Test
 import LiaisonTests.Liaison.Egress.ProviderTest
 import LiaisonTests.Liaison.ServerTest

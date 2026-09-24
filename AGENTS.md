@@ -26,16 +26,21 @@ hold, make (or refuse) one outbound call, record the attempt. It is built on
   `linen`'s `Data.Time.getCurrentTime` → `Std.Time.Timestamp.now`; no FFI).
 - `Liaison/Egress/Credential.lean` — the typed credential of
   `typednotes/typednotes`'s `docs/connections.md` §3.3 (`CredentialAuth`:
-  `bearer`/`header`/`googleOauth`/`s3`; `Credential.parse`,
-  `setHeaderNames`, `refreshed`). No `Repr`/`ToString`, deliberately.
+  `bearer`/`header`/`oauth` (issuer `google`/`dropbox`/`gitlab`)/`s3`/
+  `azureSas`; `Credential.parse`, `setHeaderNames`, `refreshed`). No
+  `Repr`/`ToString` on credentials, deliberately (`OAuthIssuer` has one: it
+  is not secret).
 - `Liaison/Egress/Policy.lean` — pure request policy (`connections.md` §5):
   `accountMatchesResource`, `checkCallerHeaders`, `urlWithinBase`/`checkUrl`/
-  `parseTarget`, `needsRefresh`.
+  `parseTarget`, `reservedQueryKeys`/`checkCallerQuery`/`appendQuery` (the
+  SAS a credential appends), `needsRefresh`.
 - `Liaison/Egress/Secrets.lean` — `typednotes/secrets` HTTP client
   (`SecretsConfig` with `userpass` login + cached token or static token,
   `fetchCredential`, `writeCredential`).
-- `Liaison/Egress/Google.lean` — `google_oauth` refresh (`refreshForm`,
-  `parseTokenResponse`, `refreshGoogle`).
+- `Liaison/Egress/OAuth.lean` — refresh for `google_oauth`, `dropbox_oauth`
+  and `gitlab_oauth` (`OAuthClients`, one optional client per issuer from
+  `{GOOGLE,DROPBOX,GITLAB}_CLIENT_ID`/`_SECRET`; token endpoints fixed per
+  issuer; `refreshForm`, `parseTokenResponse`, `refreshToken`).
 - `Liaison/Egress/S3.lean` — SigV4 for `s3` credentials over `linen`'s
   `Crypto.SigV4.sign` (`s3Canonical`, `s3AuthHeaders`).
 - `Liaison/Egress/Provider.lean` — `EgressConfig`, `callProvider` (generic
@@ -54,7 +59,8 @@ hold, make (or refuse) one outbound call, record the attempt. It is built on
 - `Main.lean` — reads `LIAISON_ROOT_KEY`, `DATABASE_URL`,
   `SECRETS_HOST`/`SECRETS_PORT`/`SECRETS_INSECURE`, `SECRETS_USERNAME`+
   `SECRETS_PASSWORD` (or the fallback `SECRETS_TOKEN`), the optional
-  `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, `LIAISON_PORT` (default `8080`),
+  `{GOOGLE,DROPBOX,GITLAB}_CLIENT_ID`/`_CLIENT_SECRET`, `LIAISON_PORT`
+  (default `8080`),
   then serves `Liaison.application` (`POST /v0/egress`, `GET /_health`).
 
 ## Running tests
@@ -133,7 +139,7 @@ Everything below is a deliberate v0 scope cut, not an oversight:
 - **Warrant expiry still uses the caller's `now`** (`connections.md` §9);
   liaison's own wall clock is used only for Google `expires_at`, the vault
   token's expiry and the SigV4 timestamp.
-- **Concurrent Google refreshes are not coalesced**: two requests that both
+- **Concurrent OAuth refreshes are not coalesced**: two requests that both
   see a due token both refresh and both write back (last write wins; both
   tokens are valid).
 - **S3 requests sign only `host`, `x-amz-content-sha256`, `x-amz-date`**;
@@ -158,10 +164,14 @@ is always left to the user to review and do themselves.
   as an RFC 3986 `http(s)` URI with no userinfo, no fragment and no `.`/`..`
   segment (encoded or not), and its scheme/host/port must equal the base's —
   otherwise `url_denied`. A trailing `/` on a stored `base_url` is ignored.
-- **Google write-back path**: the refreshed credential is written back to
-  the path it was read from (`thirdparty/{provider}/{account}`), which is
+- **OAuth write-back path**: the refreshed credential is written back to
+  the path it was read from (`thirdparty/{provider}/{account}`), e.g.
   `thirdparty/gdrive/{account}` for every `google_oauth` credential the app
-  writes.
+  writes, `thirdparty/gitlab/{account}` for `gitlab_oauth`.
+- **GitLab rotates refresh tokens**: every refresh invalidates the stored
+  one, so a failed write-back (or two concurrent refreshes) leaves the
+  connection unusable until it is reconnected. Google and Dropbox keep
+  theirs.
 - **`call.method`** must be uppercase ASCII letters (`malformed_warrant`
   otherwise), so nothing can be injected into the outbound request line.
 - **`account`/`resource` mismatch and a statically forbidden header are

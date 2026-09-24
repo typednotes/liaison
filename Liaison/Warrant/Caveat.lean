@@ -111,7 +111,7 @@ inductive Denial
       (`Egress.Policy.checkCallerHeaders`). -/
   | headerDenied
   /-- No credential, an unusable one (unknown `kind`, malformed), a vault
-      failure, or a failed Google refresh. -/
+      failure, or a failed OAuth refresh. -/
   | credentialUnavailable
   /-- The provider could not be reached (network/TLS failure). A provider
       *answering* with an error status is not this — it is relayed. -/

@@ -15,8 +15,8 @@
   The same constraint means `callProvider`'s orchestration (credential
   fetch → header/URL policy → refresh → sign → send, every failure a
   `Denial`) is not driven end to end here; its pure parts are tested in
-  `CredentialTest`, `PolicyTest`, `S3Test`, `GoogleTest` and below
-  (`staticAuthHeaders`).
+  `CredentialTest`, `PolicyTest`, `S3Test`, `OAuthTest` and below
+  (`staticAuthHeaders`, `credentialQuery`).
 
   What *is* checked: `callInference`'s type (pinned by the `example` below,
   the same signature-pinning convention `Tests/Linen/Crypto/JOSE/FFITest.lean`
@@ -44,7 +44,12 @@ example : {r : Request} → EgressConfig → ProviderCall →
 -- How each non-S3 kind authenticates (`docs/connections.md` §3.3).
 #guard staticAuthHeaders (.bearer "gho_x") == some [("Authorization", "Bearer gho_x")]
 #guard staticAuthHeaders (.header "x-api-key" "sk") == some [("x-api-key", "sk")]
-#guard staticAuthHeaders (.googleOauth "ya29" "1//r" 0) == some [("Authorization", "Bearer ya29")]
+#guard staticAuthHeaders (.oauth .google "ya29" "1//r" 0) == some [("Authorization", "Bearer ya29")]
+#guard staticAuthHeaders (.oauth .gitlab "glo" "glr" 0) == some [("Authorization", "Bearer glo")]
+-- A SAS authenticates in the query, not in a header.
+#guard staticAuthHeaders (.azureSas "sv=1&sig=x") == some []
+#guard credentialQuery (.azureSas "sv=1&sig=x") == "sv=1&sig=x"
+#guard credentialQuery (.bearer "t") == ""
 -- S3 is signed per request, not a static header.
 #guard staticAuthHeaders (.s3 "fr-par" "k" "s") == none
 

@@ -26,6 +26,8 @@ LIAISON_ROOT_KEY=$(openssl rand -hex 32) lake build LiaisonTests
 LIAISON_ROOT_KEY=... DATABASE_URL=... SECRETS_HOST=... \
   SECRETS_USERNAME=liaison SECRETS_PASSWORD=... \
   GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... \
+  DROPBOX_CLIENT_ID=... DROPBOX_CLIENT_SECRET=... \
+  GITLAB_CLIENT_ID=... GITLAB_CLIENT_SECRET=... \
   lake exe liaison
 ```
 
@@ -41,6 +43,8 @@ LIAISON_ROOT_KEY=... DATABASE_URL=... SECRETS_HOST=... \
 | `SECRETS_USERNAME`, `SECRETS_PASSWORD` | one of these… | `userpass` login (`POST /v1/auth/userpass/login`); the token is cached and renewed when < 60 s remain, and once after a `403` |
 | `SECRETS_TOKEN` | …or this | static vault token, used only when `SECRETS_USERNAME` is unset. Startup fails if neither is configured |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | no | needed to refresh `google_oauth` credentials; without them a due refresh is `credential_unavailable` |
+| `DROPBOX_CLIENT_ID`, `DROPBOX_CLIENT_SECRET` | no | the same, for `dropbox_oauth` (the app's Dropbox app) |
+| `GITLAB_CLIENT_ID`, `GITLAB_CLIENT_SECRET` | no | the same, for `gitlab_oauth` (the app's gitlab.com OAuth application) |
 | `LIAISON_PORT` | no | default `8080` |
 
 ## API
@@ -71,8 +75,8 @@ relaying whatever the provider answered. Every attempt writes exactly one
 | `tag_invalid`, `capability_denied`, `resource_denied`, `wrong_run`, `expired`, `budget_exceeded` | 403 | warrant checks |
 | `budget_unavailable` | 402 | no hold could be placed (or the hold lifecycle's Postgres calls failed) |
 | `header_denied` | 400 | a caller header is `authorization`, `proxy-authorization`, `x-api-key`, `host`, `content-length`, `cookie`, `transfer-encoding`, `connection`, any `x-amz-*`, a header the credential sets, or malformed |
-| `url_denied` | 403 | URL not `base_url`, under `base_url + "/"`, or `base_url + "?"`; or unparsable, with userinfo, a fragment or a dot segment |
-| `credential_unavailable` | 502 | no credential, unknown `kind`, malformed credential, vault failure, Google refresh failed/impossible |
+| `url_denied` | 403 | URL not `base_url`, under `base_url + "/"`, or `base_url + "?"`; or unparsable, with userinfo, a fragment or a dot segment; or, for `azure_sas`, a query key that is a SAS parameter |
+| `credential_unavailable` | 502 | no credential, unknown `kind`, malformed credential, vault failure, OAuth refresh failed/impossible |
 | `upstream_failed` | 502 | the provider could not be reached |
 | `inference_not_implemented` | 501 | `{"kind": "inference"}` (stub) |
 
@@ -87,7 +91,10 @@ every call):
 | `bearer` | `base_url`, `token` | `Authorization: Bearer {token}` |
 | `header` | `base_url`, `header`, `token` | `{header}: {token}` |
 | `google_oauth` | `base_url`, `access_token`, `refresh_token`, `expires_at` (Unix s) | `Authorization: Bearer {access_token}`; refreshed at `https://oauth2.googleapis.com/token` when `expires_at - 60 ≤ now` (liaison's wall clock), then written back to the vault (best-effort) |
+| `dropbox_oauth` | as `google_oauth` | the same, refreshed at `https://api.dropboxapi.com/oauth2/token` |
+| `gitlab_oauth` | as `google_oauth` | the same, refreshed at `https://gitlab.com/oauth/token`; GitLab rotates the refresh token on every refresh, so a failed write-back means reconnecting |
 | `s3` | `base_url`, `region`, `access_key_id`, `secret_access_key` | AWS SigV4, service `s3`, payload hash = SHA-256 of the body, signed headers `host;x-amz-content-sha256;x-amz-date` |
+| `azure_sas` | `base_url`, `sas` (a query string of SAS parameters only, with `sv` and `sig`) | the SAS appended to the call's query; the caller's query may not use any SAS parameter name (`url_denied`) |
 
 ## Schema
 

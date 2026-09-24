@@ -1,7 +1,7 @@
 /-
   Tests for `Liaison.Egress.Policy`: account validation, the caller-header
-  policy, the URL-prefix rule and target decomposition, and the Google
-  refresh predicate (`docs/connections.md` §5).
+  policy, the URL-prefix rule and target decomposition, the query keys a
+  SAS reserves, and the OAuth refresh predicate (`docs/connections.md` §5).
 -/
 import Liaison.Egress.Policy
 
@@ -104,7 +104,22 @@ namespace LiaisonTests.Liaison.Egress.Policy
 #guard percentDecode "%zz" == none
 #guard percentDecode "%4" == none
 
--- ── Google refresh predicate ──
+-- ── Query keys the credential appends ──
+
+#guard reservedQueryKeys (.azureSas "sv=1&sig=x") == sasParamNames
+#guard reservedQueryKeys (.bearer "t") == []
+#guard checkCallerQuery sasParamNames "restype=container&comp=list&maxresults=1"
+#guard checkCallerQuery sasParamNames ""
+#guard !checkCallerQuery sasParamNames "comp=list&sig=forged"
+#guard !checkCallerQuery sasParamNames "SP=rwdl"               -- case-insensitive
+#guard !checkCallerQuery sasParamNames "%73ig=forged"          -- percent-encoded `sig`
+#guard !checkCallerQuery sasParamNames "%zz=1"                 -- undecodable: refused
+#guard checkCallerQuery [] "sig=anything"                      -- other kinds reserve nothing
+#guard appendQuery "" "sv=1&sig=x" == "sv=1&sig=x"
+#guard appendQuery "comp=list" "sv=1&sig=x" == "comp=list&sv=1&sig=x"
+#guard appendQuery "comp=list" "" == "comp=list"
+
+-- ── OAuth refresh predicate ──
 
 #guard needsRefresh 1000 940             -- exactly 60 s left: refresh
 #guard needsRefresh 1000 999

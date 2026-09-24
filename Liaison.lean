@@ -9,7 +9,7 @@ import Liaison.Clock
 import Liaison.Egress.Credential
 import Liaison.Egress.Policy
 import Liaison.Egress.Secrets
-import Liaison.Egress.Google
+import Liaison.Egress.OAuth
 import Liaison.Egress.S3
 import Liaison.Egress.Provider
 import Liaison.Server

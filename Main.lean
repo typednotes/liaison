@@ -4,7 +4,7 @@ import Linen.Network.WebApp.Server
 /-- Entry point. Reads `LIAISON_ROOT_KEY`, `DATABASE_URL`, `SECRETS_HOST`/
     `SECRETS_PORT`/`SECRETS_INSECURE` plus `SECRETS_USERNAME`+`SECRETS_PASSWORD`
     or `SECRETS_TOKEN` (see `Liaison.Egress.SecretsConfig.fromEnv`), the
-    optional `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, and `LIAISON_PORT`
+    optional `{GOOGLE,DROPBOX,GITLAB}_CLIENT_ID`/`_CLIENT_SECRET`, and `LIAISON_PORT`
     (default `8080`), then serves `Liaison.application` (`POST /v0/egress`,
     `GET /_health`). Fails loudly (via the `IO.userError`s in
     `RootKey.fromEnv`/`SecretsConfig.fromEnv`) rather than starting with a
