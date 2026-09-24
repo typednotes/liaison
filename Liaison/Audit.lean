@@ -31,17 +31,11 @@ structure AuditRow where
   /-- `none` on success, `some d` naming which `Denial` was returned. -/
   outcome   : Option Denial
 
-private def denialText : Option Denial → String
+/-- The `audit_log.outcome` text: `"ok"` on success, otherwise the denial's
+    `Denial.code` (the same string as the HTTP response's `error`). -/
+def outcomeText : Option Denial → String
   | none => "ok"
-  | some .expired => "expired"
-  | some .capabilityDenied => "capability_denied"
-  | some .resourceDenied => "resource_denied"
-  | some .budgetExceeded => "budget_exceeded"
-  | some .budgetUnavailable => "budget_unavailable"
-  | some .wrongRun => "wrong_run"
-  | some .tagInvalid => "tag_invalid"
-  | some .malformedWarrant => "malformed_warrant"
-  | some .inferenceNotImplemented => "inference_not_implemented"
+  | some d => d.code
 
 /-- A flat 6-column text encoder. `Encoders.Params` has no six-way
     combinator (only up to `triple`), and nesting `pair`/`triple` just to
@@ -69,7 +63,7 @@ def recordAttemptStmt : Statement (String × String × String × String × Strin
 def recordAttempt (pool : Pool) (row : AuditRow) : IO Unit := do
   let params :=
     ( row.warrantId.value, row.orgId.value, row.runId.value
-    , row.provider.value, row.action.value, denialText row.outcome)
+    , row.provider.value, row.action.value, outcomeText row.outcome)
   match ← Pool.use pool (recordAttemptStmt.run params) with
   | .ok () => pure ()
   | .error e => throw <| IO.userError s!"failed to record audit row: {e}"

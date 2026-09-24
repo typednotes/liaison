@@ -15,22 +15,22 @@ namespace LiaisonTests.Liaison.Budget
 
 #guard reserveHoldStmt.sql ==
   "insert into credit_holds (org_id, run_id, amount, state, expires_at) " ++
-  "select $1, $2, $3, 'held', now() + interval '15 minutes' " ++
+  "select $1::uuid, $2::uuid, $3::bigint, 'held', now() + interval '15 minutes' " ++
   "where ( " ++
-  "  select coalesce(sum(delta), 0) from credit_ledger where org_id = $1 " ++
+  "  select coalesce(sum(delta), 0) from credit_ledger where org_id = $1::uuid " ++
   ") - ( " ++
   "  select coalesce(sum(amount), 0) from credit_holds " ++
-  "   where org_id = $1 and state = 'held' " ++
-  ") >= $3 " ++
-  "returning id"
+  "   where org_id = $1::uuid and state = 'held' " ++
+  ") >= $3::bigint " ++
+  "returning id::text"
 
 #guard settleHoldStmt.sql ==
-  "update credit_holds set state = 'settled' where id = $1 and state = 'held'"
+  "update credit_holds set state = 'settled' where id = $1::uuid and state = 'held'"
 
 #guard recordUsageStmt.sql ==
-  "insert into credit_ledger (org_id, run_id, delta, reason) values ($1, $2, $3, 'usage')"
+  "insert into credit_ledger (org_id, run_id, delta, reason) values ($1::uuid, $2::uuid, $3::bigint, 'usage')"
 
 #guard releaseHoldStmt.sql ==
-  "update credit_holds set state = 'released' where id = $1 and state = 'held'"
+  "update credit_holds set state = 'released' where id = $1::uuid and state = 'held'"
 
 end LiaisonTests.Liaison.Budget

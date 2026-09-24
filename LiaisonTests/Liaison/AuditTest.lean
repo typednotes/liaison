@@ -2,10 +2,9 @@
   Tests for `Liaison.Audit`.
 
   Pins `recordAttemptStmt`'s literal SQL text and its encoder's column
-  count, per `Audit.lean`'s own comment pointing at this file. `denialText`
-  is `private` to `Audit.lean` and so cannot be exercised directly from
-  here; it is covered indirectly by `recordAttempt`, which needs a live
-  Postgres connection (not exercised in v0 — see `AGENTS.md`).
+  count, per `Audit.lean`'s own comment pointing at this file, and the
+  `outcome` text of every result. `recordAttempt` itself needs a live
+  Postgres connection (not exercised — see `AGENTS.md`).
 -/
 import Liaison.Audit
 
@@ -18,6 +17,15 @@ namespace LiaisonTests.Liaison.Audit
   "values ($1, $2, $3, $4, $5, $6)"
 
 #guard recordAttemptStmt.encode.width == 6
+
+-- The outcome column: "ok", or the denial's code (the HTTP `error` string).
+#guard outcomeText none == "ok"
+#guard outcomeText (some .urlDenied) == "url_denied"
+#guard outcomeText (some .headerDenied) == "header_denied"
+#guard outcomeText (some .credentialUnavailable) == "credential_unavailable"
+#guard outcomeText (some .upstreamFailed) == "upstream_failed"
+#guard outcomeText (some .budgetUnavailable) == "budget_unavailable"
+#guard outcomeText (some .malformedWarrant) == "malformed_warrant"
 
 /-- The migration that creates `audit_log`, read at compile time — the test
     reads the `.sql` file; nothing in the library does. -/

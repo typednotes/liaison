@@ -22,9 +22,24 @@ hold, make (or refuse) one outbound call, record the attempt. It is built on
   trustworthy input).
 - `Liaison/Budget.lean` — `Reserved`, `withReservation`, and the credit-hold
   SQL (ported from `ledger.md` §7's atomic conditional-insert pattern).
+- `Liaison/Clock.lean` — `nowUnixSeconds`, liaison's own wall clock (via
+  `linen`'s `Data.Time.getCurrentTime` → `Std.Time.Timestamp.now`; no FFI).
+- `Liaison/Egress/Credential.lean` — the typed credential of
+  `typednotes/typednotes`'s `docs/connections.md` §3.3 (`CredentialAuth`:
+  `bearer`/`header`/`googleOauth`/`s3`; `Credential.parse`,
+  `setHeaderNames`, `refreshed`). No `Repr`/`ToString`, deliberately.
+- `Liaison/Egress/Policy.lean` — pure request policy (`connections.md` §5):
+  `accountMatchesResource`, `checkCallerHeaders`, `urlWithinBase`/`checkUrl`/
+  `parseTarget`, `needsRefresh`.
 - `Liaison/Egress/Secrets.lean` — `typednotes/secrets` HTTP client
-  (`SecretsConfig`, `fetchCredential`, `Credential`).
-- `Liaison/Egress/Provider.lean` — `callProvider` (generic HTTP egress) and
+  (`SecretsConfig` with `userpass` login + cached token or static token,
+  `fetchCredential`, `writeCredential`).
+- `Liaison/Egress/Google.lean` — `google_oauth` refresh (`refreshForm`,
+  `parseTokenResponse`, `refreshGoogle`).
+- `Liaison/Egress/S3.lean` — SigV4 for `s3` credentials over `linen`'s
+  `Crypto.SigV4.sign` (`s3Canonical`, `s3AuthHeaders`).
+- `Liaison/Egress/Provider.lean` — `EgressConfig`, `callProvider` (generic
+  HTTP egress; never throws — every failure is a `Denial`) and
   `callInference` (a loud, structured-denial stub — see below).
 - `Liaison/Audit.lean` — `recordAttempt`, writing to `audit_log`.
 - `sql/0001_audit_log.sql` — the `audit_log` table, the one table `liaison`
@@ -37,8 +52,10 @@ hold, make (or refuse) one outbound call, record the attempt. It is built on
   off the wire, calls `authorize` → `withReservation` → `callProvider`/
   `callInference`, records the attempt, shapes the response.
 - `Main.lean` — reads `LIAISON_ROOT_KEY`, `DATABASE_URL`,
-  `SECRETS_HOST`/`SECRETS_PORT`/`SECRETS_INSECURE`/`SECRETS_TOKEN`,
-  `LIAISON_PORT` (default `8080`), then serves `Liaison.application`.
+  `SECRETS_HOST`/`SECRETS_PORT`/`SECRETS_INSECURE`, `SECRETS_USERNAME`+
+  `SECRETS_PASSWORD` (or the fallback `SECRETS_TOKEN`), the optional
+  `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, `LIAISON_PORT` (default `8080`),
+  then serves `Liaison.application` (`POST /v0/egress`, `GET /_health`).
 
 ## Running tests
 
@@ -66,7 +83,7 @@ Everything below is a deliberate v0 scope cut, not an oversight:
   OpenTelemetry tracing/metrics, human-in-the-loop (HITL) policy, warrant
   revocation checking, per-provider inference request shaping
   (`Liaison/Egress/Inference/*.lean` — Baseten/Mistral/Scaleway-specific).
-- **`Liaison.Egress.callInference`** (`Liaison/Egress/Provider.lean:59`) is a
+- **`Liaison.Egress.callInference`** (`Liaison/Egress/Provider.lean`) is a
   loud, structured-denial stub: it always returns
   `.error .inferenceNotImplemented`, never a silent success, never
   `sorry`/`panic!`. Inference routing (`broker.md` §8) is unimplemented.
@@ -79,18 +96,13 @@ Everything below is a deliberate v0 scope cut, not an oversight:
   `LiaisonTests/Liaison/Egress/ProviderTest.lean`/`LiaisonTests/Liaison/ServerTest.lean`
   cannot construct one to drive `callProvider`/`callInference`/the HTTP
   handler end to end — see those files' own doc comments for the exact gap.
+  Likewise the vault client (login, 403 retry, write-back), the Google
+  refresh round trip and a real SigV4 call against an S3 endpoint are not
+  exercised against live services; their pure parts (parsers, policy,
+  signatures against AWS's published S3 vectors) are.
   A scratch-Postgres smoke test is optional future work, not done here.
-- **The `secrets` credential JSON shape is a v0 assumption, not confirmed.**
-  `Liaison/Egress/Secrets.lean:66-72`: `Credential.token` assumes a single
-  `"token"` string field under `"data"`. The route
-  (`/v1/secret/data/thirdparty/{provider}/{account}`), the `/v1/` prefix, the
-  `Authorization: Bearer` header, and the top-level `"data"` envelope were
-  confirmed by reading `secrets-server`'s own source
-  (`crates/secrets-server/src/handlers.rs`,
-  `crates/secrets-server/tests/integration.rs`); the exact fields *inside*
-  `"data"` for a thirdparty OAuth credential were not.
 - **`callProvider` charges the warrant's full authorized cost regardless of
-  actual usage** (`Liaison/Egress/Provider.lean:47-51`) — there is no
+  actual usage** (`Liaison/Egress/Provider.lean`, end of `callProvider`) — there is no
   per-call cost model for generic HTTP egress (unlike inference, there is no
   token count to meter on).
 - **`Liaison.Budget.withReservation`'s `actual ≤ h.amount` inequality is not
@@ -101,19 +113,33 @@ Everything below is a deliberate v0 scope cut, not an oversight:
   (`Liaison/Budget.lean:105-111`): `reserveHold` returns
   `.error .budgetUnavailable` both when the balance is insufficient and when
   the Postgres call itself failed. No separate `Denial` variant exists for
-  "the database is down."
+  "the database is down." The same code is used when an exception escapes
+  `withReservation` (a failed settle/release): `Server.lean` catches it and
+  audits `budget_unavailable` — even if the provider call itself happened
+  (its response is then not returned).
 - **`authorize` never cross-checks `Request.orgId` against `Warrant.orgId`**
   (`Liaison/Auth.lean:39-47`) — a request's own `orgId` field is not compared
   against the warrant's. In v0 the only caller (`Server.lean`) always derives
   both from the same wire payload, but nothing in the type system enforces
   agreement between them if that changes.
-- **The v0 wire format (`Liaison/Server.lean`) is a placeholder design**, not
-  a reviewed/versioned API — every parsing/response-shaping function in that
-  file is `private`, deliberately, so nothing downstream is tempted to reuse
+- **The wire format (`Liaison/Server.lean`)** is now the one
+  `connections.md` §5 fixes for requests, but the success envelope (hex
+  body) is still liaison's own design. Every parsing function in that file
+  is `private` (only `denialStatus` is public, for tests), deliberately, so nothing downstream is tempted to reuse
   a half-trusted parser; a real end-to-end HTTP smoke test of it has not been
   run as part of this implementation (would require a live Postgres pool and
   a running `Main`; not exercised — see `LiaisonTests/Liaison/ServerTest.lean`'s
   doc comment).
+- **Warrant expiry still uses the caller's `now`** (`connections.md` §9);
+  liaison's own wall clock is used only for Google `expires_at`, the vault
+  token's expiry and the SigV4 timestamp.
+- **Concurrent Google refreshes are not coalesced**: two requests that both
+  see a due token both refresh and both write back (last write wins; both
+  tokens are valid).
+- **S3 requests sign only `host`, `x-amz-content-sha256`, `x-amz-date`**;
+  caller headers (e.g. `content-type`) and the credential's static headers
+  are sent unsigned, so a static `x-amz-*` header in an `s3` credential would
+  be rejected by S3.
 
 ## Git
 
@@ -121,6 +147,27 @@ Everything below is a deliberate v0 scope cut, not an oversight:
 is always left to the user to review and do themselves.
 
 ## Deviations from the plan/docs, and why
+
+- **`connections.md` §5 caller-header list, extended**: besides the listed
+  names, `transfer-encoding` and `connection` are refused
+  (`Policy.forbiddenHeaderNames`) — both would let a caller desynchronise the
+  framing (`Content-Length`/`Connection: close`) `linen`'s HTTP client writes.
+  Malformed header names/values (non-token names, CR/LF in values) are
+  `header_denied` too.
+- **URL rule, hardened**: besides the string-prefix rule, the URL must parse
+  as an RFC 3986 `http(s)` URI with no userinfo, no fragment and no `.`/`..`
+  segment (encoded or not), and its scheme/host/port must equal the base's —
+  otherwise `url_denied`. A trailing `/` on a stored `base_url` is ignored.
+- **Google write-back path**: the refreshed credential is written back to
+  the path it was read from (`thirdparty/{provider}/{account}`), which is
+  `thirdparty/gdrive/{account}` for every `google_oauth` credential the app
+  writes.
+- **`call.method`** must be uppercase ASCII letters (`malformed_warrant`
+  otherwise), so nothing can be injected into the outbound request line.
+- **`account`/`resource` mismatch and a statically forbidden header are
+  checked after `authorize` and before a hold is placed**; headers the
+  credential sets and the URL are checked after the credential is fetched,
+  inside the hold (which is then released).
 
 - **`Tag.lean` folds `orgId` into the root HMAC input** (`s₀ = HMAC(rootKey,
   id⧺orgId)`), which `broker.md`'s tag chain does not do. This is a

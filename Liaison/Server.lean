@@ -35,10 +35,20 @@
     "now": "<u64 decimal string>", "cost": "<nat decimal string>",
     "provider": "...", "action": "...", "resource": "...",
     "runId": "...", "orgId": "...",
-    "call": {"kind": "provider", "account": "...", "method": "GET", "url": "https://..."}
+    "call": {"kind": "provider", "account": "{user_id}/{connection_id}",
+             "method": "GET", "url": "https://...",
+             "headers": {"accept": "application/json"},   -- optional
+             "body": "..."}                               -- optional, UTF-8
       -- or {"kind": "inference"}
   }
   ```
+
+  0.3.0 (`typednotes/typednotes`'s `docs/connections.md` §5): `account` is two
+  `[A-Za-z0-9_-]` segments whose last equals `resource` (else
+  `malformed_warrant`); caller headers are policed (`header_denied`); the URL
+  must stay under the credential's `base_url` (`url_denied`); vault/refresh
+  failures are `credential_unavailable`, network failures `upstream_failed`.
+  `GET /_health` answers `200 ok`.
 
   `now`/`cost` are decimal **strings**, not JSON numbers — `Data.Json.Value.number`
   is `Float`-backed, and this avoids writing/justifying any float→exact-Nat/UInt64
@@ -56,6 +66,7 @@ import Liaison.Budget
 import Liaison.Audit
 import Liaison.Egress.Provider
 import Liaison.Egress.Secrets
+import Liaison.Egress.Policy
 import Linen.Network.WebApp
 import Linen.Network.HTTP.Client.Types
 import Linen.Network.HTTP.Simple
@@ -68,12 +79,12 @@ namespace Liaison
 open Network.HTTP.Types
 open Data.Json (Value)
 open Database.SQL.Pool (Pool)
-open Egress (SecretsConfig callProvider callInference)
+open Egress (EgressConfig ProviderCall callProvider callInference)
 
 /-- What to do after a request is authorized and its budget reserved. Parsed
     once, here, from the `"call"` object — never re-derived downstream. -/
 private inductive Call
-  | provider (account : String) (method : String) (url : String)
+  | provider (call : ProviderCall)
   | inference
 
 private def orErr (o : Option α) (msg : String) : Except String α :=
@@ -130,14 +141,37 @@ private def parseRequest (v : Value) : Except String Request := do
   return { now := now.toUInt64, cost, provider := ⟨provider⟩, action := ⟨action⟩,
             resource := ⟨resource⟩, runId := ⟨runId⟩, orgId := ⟨orgId⟩ }
 
+/-- `call.headers`: absent or `null` → `[]`; otherwise an object whose every
+    value is a string. -/
+private def parseHeaders (v : Value) : Except String (List (String × String)) := do
+  match ← v.getFieldOpt "headers" with
+  | none => return []
+  | some (.object fields) =>
+    fields.mapM (fun (k, val) =>
+      (orErr val.asString s!"call.headers.{k} not a string").map (fun s => (k, s)))
+  | some _ => .error "call.headers not an object"
+
+/-- `call.body`: absent or `null` → none; otherwise a string. -/
+private def parseCallBody (v : Value) : Except String (Option String) := do
+  match ← v.getFieldOpt "body" with
+  | none => return none
+  | some (.string s) => return some s
+  | some _ => .error "call.body not a string"
+
 private def parseCall (v : Value) : Except String Call := do
   let kind ← getString v "kind"
   match kind with
   | "provider" =>
     let account ← getString v "account"
     let method ← getString v "method"
+    -- An RFC 9110 method is a token; `liaison` accepts uppercase letters
+    -- only, so nothing can be smuggled into the outbound request line.
+    if method.isEmpty || !method.all Char.isUpper then
+      .error "call.method not an uppercase method name"
     let url ← getString v "url"
-    return .provider account method url
+    let headers ← parseHeaders v
+    let body ← parseCallBody v
+    return .provider { account, method, url, headers, body }
   | "inference" => return .inference
   | other => .error s!"unknown call kind {other}"
 
@@ -147,13 +181,17 @@ private structure ParsedBody where
   call    : Call
 
 private def parseBody (bytes : ByteArray) : Except String ParsedBody := do
-  let root ← Data.Json.Decode.decode (String.fromUTF8! bytes)
+  let text ← orErr (String.fromUTF8? bytes) "body is not UTF-8"
+  let root ← Data.Json.Decode.decode text
   let warrant ← parseWarrant (← root.getField "warrant")
   let request ← parseRequest root
   let call ← parseCall (← root.getField "call")
   return { warrant, request, call }
 
-private def denialStatus : Denial → Status
+/-- The HTTP status of each denial (`connections.md` §5 for the 0.3.0
+    ones). Public so `LiaisonTests/Liaison/ServerTest.lean` can pin it; the
+    response body's `error` is `Denial.code`. -/
+def denialStatus : Denial → Status
   | .malformedWarrant => status400
   | .tagInvalid => status403
   | .capabilityDenied => status403
@@ -163,20 +201,13 @@ private def denialStatus : Denial → Status
   | .budgetExceeded => status403
   | .budgetUnavailable => status402
   | .inferenceNotImplemented => status501
-
-private def denialBody : Denial → String
-  | .malformedWarrant => "malformed_warrant"
-  | .tagInvalid => "tag_invalid"
-  | .capabilityDenied => "capability_denied"
-  | .resourceDenied => "resource_denied"
-  | .wrongRun => "wrong_run"
-  | .expired => "expired"
-  | .budgetExceeded => "budget_exceeded"
-  | .budgetUnavailable => "budget_unavailable"
-  | .inferenceNotImplemented => "inference_not_implemented"
+  | .urlDenied => status403
+  | .headerDenied => status400
+  | .credentialUnavailable => status502
+  | .upstreamFailed => status502
 
 private def denialResponse (d : Denial) : Network.WebApp.Response :=
-  let body := Data.Json.Encode.encode (.object [("error", .string (denialBody d))])
+  let body := Data.Json.Encode.encode (.object [("error", .string d.code)])
   Network.WebApp.responseLBS (denialStatus d) [(hContentType, "application/json")] body
 
 /-- Turn a `Liaison.Response` (the generic egress-call response `Budget.lean`
@@ -192,9 +223,11 @@ private def wrapUpstream (r : Liaison.Response) : Network.WebApp.Response :=
   Network.WebApp.responseLBS status200 [(hContentType, "application/json")] body
 
 /-- `POST /v0/egress` handler. Every path — parse failure, `authorize`
-    denial, `withReservation` denial, and success — writes exactly one
-    `AuditRow` before responding. -/
-private def handleEgress (rootKey : RootKey) (pool : Pool) (secretsCfg : SecretsConfig)
+    denial, request-policy denial, `withReservation` denial (including every
+    `callProvider` failure, which `callProvider` returns as a `Denial` rather
+    than throwing), an exception escaping the hold lifecycle, and success —
+    writes exactly one `AuditRow` before responding. -/
+private def handleEgress (rootKey : RootKey) (pool : Pool) (cfg : EgressConfig)
     (req : Network.WebApp.Request) : IO Network.WebApp.Response := do
   let bytes ← Network.WebApp.strictRequestBody req
   match parseBody bytes with
@@ -211,36 +244,55 @@ private def handleEgress (rootKey : RootKey) (pool : Pool) (secretsCfg : Secrets
     let mkRow (outcome : Option Denial) : AuditRow :=
       { warrantId := parsed.warrant.id, orgId := parsed.warrant.orgId, runId := parsed.request.runId
         provider := parsed.request.provider, action := parsed.request.action, outcome }
-    match ← authorize rootKey parsed.warrant parsed.request with
-    | .error d =>
+    let deny (d : Denial) : IO Network.WebApp.Response := do
       recordAttempt pool (mkRow (some d))
       return denialResponse d
+    match ← authorize rootKey parsed.warrant parsed.request with
+    | .error d => deny d
     | .ok authorized =>
-      let outcome ← withReservation pool authorized (r := parsed.request) (fun reserved =>
-        match parsed.call with
-        | .inference => callInference reserved
-        | .provider account method url =>
-          match Network.HTTP.Simple.parseUrl url with
-          | none => return .error .malformedWarrant
-          | some target =>
-            let target := { target with method := Network.HTTP.Types.parseMethod method }
-            callProvider secretsCfg account target reserved)
-      match outcome with
-      | .error d =>
-        recordAttempt pool (mkRow (some d))
-        return denialResponse d
-      | .ok resp =>
-        recordAttempt pool (mkRow none)
-        return wrapUpstream resp
+      -- Request policy that needs no credential, checked before a hold is
+      -- placed: the account must name the warrant-bound resource, and no
+      -- caller header may be one refused for every credential.
+      let preCheck : Option Denial := match parsed.call with
+        | .inference => none
+        | .provider call =>
+          if !Egress.accountMatchesResource call.account parsed.request.resource.value then
+            some .malformedWarrant
+          else if !Egress.checkCallerHeaders [] call.headers then
+            some .headerDenied
+          else none
+      match preCheck with
+      | some d => deny d
+      | none =>
+        -- `withReservation` releases the hold and rethrows on any exception
+        -- (a Postgres failure settling/releasing the hold — `callProvider`
+        -- itself never throws). Caught here so that path is audited too,
+        -- as `budget_unavailable`: the ledger, not the provider, failed.
+        let outcome ← try
+            withReservation pool authorized (r := parsed.request) (fun reserved =>
+              match parsed.call with
+              | .inference => callInference reserved
+              | .provider call => callProvider cfg call reserved)
+          catch e =>
+            IO.eprintln s!"liaison: hold lifecycle failed: {e}"
+            pure (.error .budgetUnavailable)
+        match outcome with
+        | .error d => deny d
+        | .ok resp =>
+          recordAttempt pool (mkRow none)
+          return wrapUpstream resp
 
-/-- The `liaison` `Application`. `/v0/egress` is the one egress chokepoint;
-    everything else (including `/_health`, added by `Main.lean`'s middleware
-    stack) is out of this module's concern. -/
-def application (rootKey : RootKey) (pool : Pool) (secretsCfg : SecretsConfig)
+/-- The `liaison` `Application`: `POST /v0/egress`, the one egress
+    chokepoint, and `GET /_health` (`200 ok`, no database or vault check —
+    liveness only). Everything else is `404`. -/
+def application (rootKey : RootKey) (pool : Pool) (cfg : EgressConfig)
     : Network.WebApp.Application :=
   fun req respond =>
     if req.rawPathInfo == "/v0/egress" && req.requestMethod == .standard .POST then
-      Network.WebApp.AppM.respondIO respond (handleEgress rootKey pool secretsCfg req)
+      Network.WebApp.AppM.respondIO respond (handleEgress rootKey pool cfg req)
+    else if req.rawPathInfo == "/_health" && req.requestMethod == .standard .GET then
+      Network.WebApp.AppM.respond respond
+        (Network.WebApp.responseLBS status200 [(hContentType, "text/plain")] "ok")
     else
       Network.WebApp.AppM.respond respond (Network.WebApp.responseLBS status404 [] "not found")
 

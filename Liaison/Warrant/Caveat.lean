@@ -104,7 +104,36 @@ inductive Denial
   /-- `callInference` is not implemented in this build (v0 loud stub — see
       `Liaison/Egress/Provider.lean`). -/
   | inferenceNotImplemented
+  /-- The outbound URL is not `base_url` or under `base_url + "/"`
+      (`Egress.Policy.checkUrl`). -/
+  | urlDenied
+  /-- The caller sent a header it may not set, or a malformed one
+      (`Egress.Policy.checkCallerHeaders`). -/
+  | headerDenied
+  /-- No credential, an unusable one (unknown `kind`, malformed), a vault
+      failure, or a failed Google refresh. -/
+  | credentialUnavailable
+  /-- The provider could not be reached (network/TLS failure). A provider
+      *answering* with an error status is not this — it is relayed. -/
+  | upstreamFailed
   deriving DecidableEq, Repr
+
+/-- The wire/audit code of a denial: the `error` field of the HTTP response
+    and the `audit_log.outcome` text are this same string. -/
+def Denial.code : Denial → String
+  | .expired => "expired"
+  | .capabilityDenied => "capability_denied"
+  | .resourceDenied => "resource_denied"
+  | .budgetExceeded => "budget_exceeded"
+  | .budgetUnavailable => "budget_unavailable"
+  | .wrongRun => "wrong_run"
+  | .tagInvalid => "tag_invalid"
+  | .malformedWarrant => "malformed_warrant"
+  | .inferenceNotImplemented => "inference_not_implemented"
+  | .urlDenied => "url_denied"
+  | .headerDenied => "header_denied"
+  | .credentialUnavailable => "credential_unavailable"
+  | .upstreamFailed => "upstream_failed"
 
 /-- $$\text{Caveat.permits} : \text{Caveat} \to \text{Request} \to \text{Prop}$$
     Ported from `broker.md` §4 verbatim. -/

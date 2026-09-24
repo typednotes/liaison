@@ -57,6 +57,14 @@ structure Reserved (r : Request) where
 --
 -- SQL text is pinned by literal-string `#guard`s in
 -- `LiaisonTests/Liaison/BudgetTest.lean` so a future edit shows as a diff.
+--
+-- Every parameter is cast (`$1::uuid`, `$3::bigint`, `returning id::text`):
+-- linen sends parameters untyped, and against ledger's `uuid`/`bigint`
+-- columns Postgres otherwise refuses the reserve outright ("inconsistent
+-- types deduced for parameter $3") — which 0.2.0 reported as
+-- `budget_unavailable` on every call. Found by the end-to-end run in
+-- typednotes/typednotes docs/connections.md §9; the same casts are in
+-- ledger's `Ledger/Sql/Reserve.lean`.
 
 /-- The exact atomic conditional-insert pattern from `ledger.md` §7,
     keyed on `warrant.orgId` (params: org id, run id, amount). Zero rows
@@ -65,14 +73,14 @@ structure Reserved (r : Request) where
 def reserveHoldStmt : Statement (String × String × Nat) (Option String) :=
   { sql :=
       "insert into credit_holds (org_id, run_id, amount, state, expires_at) " ++
-      "select $1, $2, $3, 'held', now() + interval '15 minutes' " ++
+      "select $1::uuid, $2::uuid, $3::bigint, 'held', now() + interval '15 minutes' " ++
       "where ( " ++
-      "  select coalesce(sum(delta), 0) from credit_ledger where org_id = $1 " ++
+      "  select coalesce(sum(delta), 0) from credit_ledger where org_id = $1::uuid " ++
       ") - ( " ++
       "  select coalesce(sum(amount), 0) from credit_holds " ++
-      "   where org_id = $1 and state = 'held' " ++
-      ") >= $3 " ++
-      "returning id"
+      "   where org_id = $1::uuid and state = 'held' " ++
+      ") >= $3::bigint " ++
+      "returning id::text"
     encode := Params.triple Params.text Params.text Params.nat
     decode := Result.maybeRow (Row.column Value.text) }
 
@@ -82,7 +90,7 @@ def reserveHoldStmt : Statement (String × String × Nat) (Option String) :=
     `ledger.md` §5's `HoldStep` — nothing leaves `.settled` or `.released`). -/
 def settleHoldStmt : Statement String Unit :=
   Statement.command
-    "update credit_holds set state = 'settled' where id = $1 and state = 'held'"
+    "update credit_holds set state = 'settled' where id = $1::uuid and state = 'held'"
     Params.text
 
 /-- Records the actual usage against the ledger (params: org id, run id,
@@ -90,14 +98,14 @@ def settleHoldStmt : Statement String Unit :=
     never from the column — mirrors `ledger.md` §5's `Entry.delta`. -/
 def recordUsageStmt : Statement (String × String × Int) Unit :=
   Statement.command
-    "insert into credit_ledger (org_id, run_id, delta, reason) values ($1, $2, $3, 'usage')"
+    "insert into credit_ledger (org_id, run_id, delta, reason) values ($1::uuid, $2::uuid, $3::bigint, 'usage')"
     (Params.triple Params.text Params.text Params.int)
 
 /-- Releases a hold without recording usage (the exception path). Same
     `state = 'held'` guard as `settleHoldStmt`. -/
 def releaseHoldStmt : Statement String Unit :=
   Statement.command
-    "update credit_holds set state = 'released' where id = $1 and state = 'held'"
+    "update credit_holds set state = 'released' where id = $1::uuid and state = 'held'"
     Params.text
 
 -- ── Hold lifecycle ───────────────────────────────────────────────────
