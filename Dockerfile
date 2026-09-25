@@ -25,6 +25,13 @@ FROM docker.io/library/debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libpq5 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --no-create-home --uid 10001 liaison
+# Lean's toolchain links a static OpenSSL whose compile-time OPENSSLDIR is
+# the machine that built the toolchain, so `SSL_CTX_set_default_verify_paths`
+# (what Linen's TLS client calls) finds no trust store here and every HTTPS
+# call — the vault, every provider — fails with "certificate verify failed".
+# OpenSSL honours these two variables over the compiled-in paths.
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
+    SSL_CERT_DIR=/etc/ssl/certs
 WORKDIR /app
 COPY --from=builder /app/.lake/build/bin/liaison /usr/local/bin/liaison
 USER liaison
