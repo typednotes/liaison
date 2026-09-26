@@ -30,7 +30,7 @@
 -/
 import Liaison.Egress.Provider
 
-open Liaison Liaison.Egress
+open Liaison Liaison.Egress Liaison.Wire
 
 namespace LiaisonTests.Liaison.Egress.Provider
 

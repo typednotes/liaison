@@ -1,6 +1,7 @@
 import LiaisonTests.Liaison.Warrant.CaveatTest
 import LiaisonTests.Liaison.Warrant.CoreTest
 import LiaisonTests.Liaison.Warrant.TagTest
+import LiaisonTests.Liaison.WireTest
 import LiaisonTests.Liaison.AuthTest
 import LiaisonTests.Liaison.BudgetTest
 import LiaisonTests.Liaison.AuditTest

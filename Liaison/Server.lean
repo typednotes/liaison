@@ -1,7 +1,7 @@
 /-
   Liaison.Server — the one HTTP boundary, and the one place that parses raw
   request bytes into `Warrant`/`Request`/an outbound-call description
-  ("parse, don't validate" — `proof-strategy.md`).
+  ("parse, don't validate" — `proof-strategy.md`), with `Liaison.Wire`.
 
   Every other module in `liaison` receives already-parsed, already-checked
   values; this module is the only one that looks at a `ByteArray` and
@@ -16,32 +16,13 @@
   `Network.WebApp.Request`/`Response` (this module's actual HTTP boundary),
   and the outbound `Network.HTTP.Client.Request` (built for `callProvider`).
 
-  ## Wire format (v0, not specified by the plan — designed here)
+  ## Wire format
 
-  `POST /v0/egress`, JSON body:
-
-  ```json
-  {
-    "warrant": {
-      "id": "...", "orgId": "...", "tag": "<hex>",
-      "caveats": [
-        {"kind": "expiresAt",  "value": "<u64 decimal string>"},
-        {"kind": "capability", "provider": "...", "action": "..."},
-        {"kind": "resource",   "value": "..."},
-        {"kind": "budget",     "value": "<nat decimal string>"},
-        {"kind": "runId",      "value": "..."}
-      ]
-    },
-    "now": "<u64 decimal string>", "cost": "<nat decimal string>",
-    "provider": "...", "action": "...", "resource": "...",
-    "runId": "...", "orgId": "...",
-    "call": {"kind": "provider", "account": "{user_id}/{connection_id}",
-             "method": "GET", "url": "https://...",
-             "headers": {"accept": "application/json"},   -- optional
-             "body": "..."}                               -- optional, UTF-8
-      -- or {"kind": "inference"}
-  }
-  ```
+  Defined once, in `Liaison.Wire` (the format, its decoders and encoders),
+  which this module uses to decode the request (`Wire.Body.decode`) and to
+  encode every reply (`Wire.encodeResponse`, `Wire.encodeRefusal`) — the same
+  module liaison's Lean clients import, so a client cannot drift from what
+  this server parses.
 
   0.3.0 (`typednotes/typednotes`'s `docs/connections.md` §5): `account` is two
   `[A-Za-z0-9_-]` segments whose last equals `resource` (else
@@ -49,16 +30,6 @@
   must stay under the credential's `base_url` (`url_denied`); vault/refresh
   failures are `credential_unavailable`, network failures `upstream_failed`.
   `GET /_health` answers `200 ok`.
-
-  `now`/`cost` are decimal **strings**, not JSON numbers — `Data.Json.Value.number`
-  is `Float`-backed, and this avoids writing/justifying any float→exact-Nat/UInt64
-  conversion for what must be exact integers (`proof-strategy.md`'s "integers only
-  for money"). Every other numeric-looking field (`budget`, `expiresAt`) is a
-  string for the same reason.
-
-  This format is a v0 design choice, not something `broker.md`/`ledger.md`
-  specify — named in `AGENTS.md` as a place a real client integration may
-  want something different (e.g. protobuf) once one exists.
 -/
 
 import Liaison.Auth
@@ -67,126 +38,17 @@ import Liaison.Audit
 import Liaison.Egress.Provider
 import Liaison.Egress.Secrets
 import Liaison.Egress.Policy
+import Liaison.Wire
 import Linen.Network.WebApp
 import Linen.Network.HTTP.Client.Types
 import Linen.Network.HTTP.Simple
-import Linen.Data.Json
-import Linen.Data.Hex
 import Linen.Database.SQL.Pool
 
 namespace Liaison
 
 open Network.HTTP.Types
-open Data.Json (Value)
 open Database.SQL.Pool (Pool)
-open Egress (EgressConfig ProviderCall callProvider callInference)
-
-/-- What to do after a request is authorized and its budget reserved. Parsed
-    once, here, from the `"call"` object — never re-derived downstream. -/
-private inductive Call
-  | provider (call : ProviderCall)
-  | inference
-
-private def orErr (o : Option α) (msg : String) : Except String α :=
-  match o with
-  | some v => .ok v
-  | none => .error msg
-
-private def getString (v : Value) (field : String) : Except String String := do
-  orErr (← v.getField field).asString s!"{field} not a string"
-
-private def getDecimalNat (v : Value) (field : String) : Except String Nat := do
-  let s ← getString v field
-  orErr s.toNat? s!"{field} not a decimal natural number"
-
-private def parseCaveat (v : Value) : Except String Caveat := do
-  let kind ← getString v "kind"
-  match kind with
-  | "expiresAt" =>
-    let n ← getDecimalNat v "value"
-    return .expiresAt n.toUInt64
-  | "capability" =>
-    let p ← getString v "provider"
-    let a ← getString v "action"
-    return .capability ⟨p⟩ ⟨a⟩
-  | "resource" =>
-    let s ← getString v "value"
-    return .resource ⟨s⟩
-  | "budget" =>
-    let n ← getDecimalNat v "value"
-    return .budget n
-  | "runId" =>
-    let s ← getString v "value"
-    return .runId ⟨s⟩
-  | other => .error s!"unknown caveat kind {other}"
-
-private def parseWarrant (v : Value) : Except String Warrant := do
-  let id ← getString v "id"
-  let orgId ← getString v "orgId"
-  let tagHex ← getString v "tag"
-  let tag ← orErr (Data.Hex.decode tagHex) "warrant.tag not valid hex"
-  let caveatsField ← v.getField "caveats"
-  let caveatsArr ← orErr caveatsField.asArray "warrant.caveats not an array"
-  let caveats ← caveatsArr.toList.mapM parseCaveat
-  return { id := ⟨id⟩, orgId := ⟨orgId⟩, caveats, tag }
-
-private def parseRequest (v : Value) : Except String Request := do
-  let now ← getDecimalNat v "now"
-  let cost ← getDecimalNat v "cost"
-  let provider ← getString v "provider"
-  let action ← getString v "action"
-  let resource ← getString v "resource"
-  let runId ← getString v "runId"
-  let orgId ← getString v "orgId"
-  return { now := now.toUInt64, cost, provider := ⟨provider⟩, action := ⟨action⟩,
-            resource := ⟨resource⟩, runId := ⟨runId⟩, orgId := ⟨orgId⟩ }
-
-/-- `call.headers`: absent or `null` → `[]`; otherwise an object whose every
-    value is a string. -/
-private def parseHeaders (v : Value) : Except String (List (String × String)) := do
-  match ← v.getFieldOpt "headers" with
-  | none => return []
-  | some (.object fields) =>
-    fields.mapM (fun (k, val) =>
-      (orErr val.asString s!"call.headers.{k} not a string").map (fun s => (k, s)))
-  | some _ => .error "call.headers not an object"
-
-/-- `call.body`: absent or `null` → none; otherwise a string. -/
-private def parseCallBody (v : Value) : Except String (Option String) := do
-  match ← v.getFieldOpt "body" with
-  | none => return none
-  | some (.string s) => return some s
-  | some _ => .error "call.body not a string"
-
-private def parseCall (v : Value) : Except String Call := do
-  let kind ← getString v "kind"
-  match kind with
-  | "provider" =>
-    let account ← getString v "account"
-    let method ← getString v "method"
-    -- An RFC 9110 method is a token; `liaison` accepts uppercase letters
-    -- only, so nothing can be smuggled into the outbound request line.
-    if method.isEmpty || !method.all Char.isUpper then
-      .error "call.method not an uppercase method name"
-    let url ← getString v "url"
-    let headers ← parseHeaders v
-    let body ← parseCallBody v
-    return .provider { account, method, url, headers, body }
-  | "inference" => return .inference
-  | other => .error s!"unknown call kind {other}"
-
-private structure ParsedBody where
-  warrant : Warrant
-  request : Request
-  call    : Call
-
-private def parseBody (bytes : ByteArray) : Except String ParsedBody := do
-  let text ← orErr (String.fromUTF8? bytes) "body is not UTF-8"
-  let root ← Data.Json.Decode.decode text
-  let warrant ← parseWarrant (← root.getField "warrant")
-  let request ← parseRequest root
-  let call ← parseCall (← root.getField "call")
-  return { warrant, request, call }
+open Egress (EgressConfig callProvider callInference)
 
 /-- The HTTP status of each denial (`connections.md` §5 for the 0.3.0
     ones). Public so `LiaisonTests/Liaison/ServerTest.lean` can pin it; the
@@ -207,20 +69,16 @@ def denialStatus : Denial → Status
   | .upstreamFailed => status502
 
 private def denialResponse (d : Denial) : Network.WebApp.Response :=
-  let body := Data.Json.Encode.encode (.object [("error", .string d.code)])
-  Network.WebApp.responseLBS (denialStatus d) [(hContentType, "application/json")] body
+  Network.WebApp.responseLBS (denialStatus d) [(hContentType, "application/json")]
+    (Wire.encodeRefusal d)
 
-/-- Turn a `Liaison.Response` (the generic egress-call response `Budget.lean`
-    and `Egress.Provider` share) into a `Network.WebApp.Response`, wrapped in
-    a JSON envelope so a caller always gets `application/json` back from
-    `liaison` itself, regardless of what the upstream provider returned. -/
-private def wrapUpstream (r : Liaison.Response) : Network.WebApp.Response :=
-  let body := Data.Json.Encode.encode
-    (.object
-      [ ("status", .number r.status.toNat.toFloat)
-      , ("headers", .object (r.headers.map (fun (k, v) => (k, .string v))))
-      , ("body", .string (Data.Hex.encode r.body)) ])
-  Network.WebApp.responseLBS status200 [(hContentType, "application/json")] body
+/-- Relay a provider's answer (`Wire.Response`, the type `Budget.lean` and
+    `Egress.Provider` share) in liaison's JSON envelope, so a caller always
+    gets `application/json` back from `liaison` itself, regardless of what the
+    upstream provider returned. -/
+private def wrapUpstream (r : Wire.Response) : Network.WebApp.Response :=
+  Network.WebApp.responseLBS status200 [(hContentType, "application/json")]
+    (Wire.encodeResponse r)
 
 /-- `POST /v0/egress` handler. Every path — parse failure, `authorize`
     denial, request-policy denial, `withReservation` denial (including every
@@ -230,7 +88,7 @@ private def wrapUpstream (r : Liaison.Response) : Network.WebApp.Response :=
 private def handleEgress (rootKey : RootKey) (pool : Pool) (cfg : EgressConfig)
     (req : Network.WebApp.Request) : IO Network.WebApp.Response := do
   let bytes ← Network.WebApp.strictRequestBody req
-  match parseBody bytes with
+  match Wire.Body.decode bytes with
   | .error _ =>
     -- No `Warrant`/`Request` was recovered, so there is nothing to key an
     -- audit row on beyond "a malformed attempt happened" — recorded with
@@ -256,7 +114,7 @@ private def handleEgress (rootKey : RootKey) (pool : Pool) (cfg : EgressConfig)
       let preCheck : Option Denial := match parsed.call with
         | .inference => none
         | .provider call =>
-          if !Egress.accountMatchesResource call.account parsed.request.resource.value then
+          if !Wire.accountMatchesResource call.account parsed.request.resource.value then
             some .malformedWarrant
           else if !Egress.checkCallerHeaders [] call.headers then
             some .headerDenied

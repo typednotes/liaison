@@ -13,7 +13,10 @@ open System Lake DSL
     flags. Returns `#[]` when pkg-config (or the queried package) is
     unavailable. -/
 def pkgConfig (args : Array String) : IO (Array String) := do
-  let out ← IO.Process.output { cmd := "pkg-config", args }
+  -- A missing `pkg-config` binary throws rather than exiting non-zero; a
+  -- package requiring `liaison` for `Liaison.Wire` alone must not need it.
+  let out ← try IO.Process.output { cmd := "pkg-config", args }
+    catch _ => return #[]
   if out.exitCode != 0 then
     return #[]
   let normalized := (out.stdout.replace "\n" " ").replace "\t" " "
@@ -77,10 +80,10 @@ run_cmd do
   let pq ← pkgAbsoluteLibs "libpq"
   mkDef `nativeLinkArgs pq
 
-require linen from git "https://github.com/typednotes/linen" @ "v1.0.0"
+require linen from git "https://github.com/typednotes/linen" @ "v1.2.0"
 
 package liaison where
-  version := v!"0.4.1"
+  version := v!"0.5.0"
 
 @[default_target]
 lean_lib Liaison where

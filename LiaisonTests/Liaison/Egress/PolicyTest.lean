@@ -1,6 +1,5 @@
 /-
-  Tests for `Liaison.Egress.Policy`: account validation, the caller-header
-  policy, the URL-prefix rule and target decomposition, the query keys a
+  Tests for `Liaison.Egress.Policy`: the caller-header policy, the URL-prefix rule and target decomposition, the query keys a
   SAS reserves, and the OAuth refresh predicate (`docs/connections.md` §5).
 -/
 import Liaison.Egress.Policy
@@ -8,26 +7,6 @@ import Liaison.Egress.Policy
 open Liaison.Egress
 
 namespace LiaisonTests.Liaison.Egress.Policy
-
--- ── Account ──
-
-#guard validAccount "user_1/conn-2"
-#guard validAccount "0d6f1c5e-aaaa-4bbb-8ccc-123456789abc/5e1c-77"
-#guard !validAccount "conn"                -- one segment
-#guard !validAccount "a/b/c"               -- three segments
-#guard !validAccount "a//b"                -- empty middle segment
-#guard !validAccount "/b"
-#guard !validAccount "a/"
-#guard !validAccount "a/../b"
-#guard !validAccount "a/b.c"               -- `.` not allowed
-#guard !validAccount "a/b c"
-#guard !validAccount "a/b?x"
-#guard !validAccount ""
-
-#guard accountMatchesResource "user/conn" "conn"
-#guard !accountMatchesResource "user/conn" "other"
-#guard !accountMatchesResource "conn/user" "conn"   -- the *last* segment is bound
-#guard !accountMatchesResource "user/conn/x" "x"
 
 -- ── Caller headers ──
 

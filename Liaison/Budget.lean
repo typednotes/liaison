@@ -18,6 +18,7 @@
 -/
 
 import Liaison.Auth
+import Liaison.Wire
 import Linen.Database.SQL.Statement
 import Linen.Database.SQL.Session
 import Linen.Database.SQL.Pool
@@ -30,20 +31,12 @@ open Database.SQL.Statement (Statement)
 open Database.SQL.Encoders (Params)
 open Database.SQL.Decoders (Value Row Result)
 open Database.SQL.Pool (Pool PoolError)
+open Wire (Response)
 
 /-- Mirrors `credit_holds.id`. -/
 structure HoldId where
   value : String
   deriving DecidableEq, Repr
-
-/-- A generic outbound-call response, shared by `Egress/Provider.lean` and
-    `Server.lean` so `withReservation`'s callback and `callProvider`/
-    `callInference`'s return type agree without either module depending on
-    linen's HTTP client types directly. -/
-structure Response where
-  status  : UInt16
-  headers : List (String × String)
-  body    : ByteArray
 
 /-- Spend authority, separate from access authority (`Authorized`). No
     public constructor: the only route in is `withReservation`, so an

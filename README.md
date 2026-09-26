@@ -50,8 +50,8 @@ LIAISON_ROOT_KEY=... DATABASE_URL=... SECRETS_HOST=... \
 ## API
 
 - `GET /_health` → `200 ok` (liveness only).
-- `POST /v0/egress` — the one egress chokepoint (the wire format is in
-  `Liaison/Server.lean`'s header; the cross-service contract is
+- `POST /v0/egress` — the one egress chokepoint (the wire format is
+  `Liaison/Wire.lean`, which Lean clients import — see below; the cross-service contract is
   `typednotes/typednotes`'s `docs/connections.md` §5). The `call` object:
 
 ```jsonc
@@ -71,7 +71,7 @@ relaying whatever the provider answered. Every attempt writes exactly one
 
 | `error` | HTTP | When |
 |---|---|---|
-| `malformed_warrant` | 400 | unparsable body, bad `method`, `account` not `a/b` of `[A-Za-z0-9_-]` or its last segment ≠ `resource` |
+| `malformed_warrant` | 400 | unparsable body (including a `u64` field outside `[0, 2^64)`), bad `method`, `account` not `a/b` of `[A-Za-z0-9_-]` or its last segment ≠ `resource` |
 | `tag_invalid`, `capability_denied`, `resource_denied`, `wrong_run`, `expired`, `budget_exceeded` | 403 | warrant checks |
 | `budget_unavailable` | 402 | no hold could be placed (or the hold lifecycle's Postgres calls failed) |
 | `header_denied` | 400 | a caller header is `authorization`, `proxy-authorization`, `x-api-key`, `host`, `content-length`, `cookie`, `transfer-encoding`, `connection`, any `x-amz-*`, a header the credential sets, or malformed |
@@ -79,6 +79,34 @@ relaying whatever the provider answered. Every attempt writes exactly one
 | `credential_unavailable` | 502 | no credential, unknown `kind`, malformed credential, vault failure, OAuth refresh failed/impossible |
 | `upstream_failed` | 502 | the provider could not be reached |
 | `inference_not_implemented` | 501 | `{"kind": "inference"}` (stub) |
+
+### Lean clients
+
+`Liaison.Wire` is the format the server parses, and the module a Lean client
+imports to speak it (pure; it links none of liaison's HMAC, Postgres or egress
+code):
+
+```lean
+require liaison from git "https://github.com/typednotes/liaison" @ "v0.5.0"
+```
+
+```lean
+import Liaison.Wire
+open Liaison.Wire
+
+-- `warrant ← decodeWarrant v` (v : Data.Json.Value, as the app handed it out), then per call:
+let body ← Body.provider warrant now 0
+  { account := "{user_id}/{connection_id}", method := "GET", url := "https://api.github.com/user" }
+-- POST body.encode to /v0/egress, then:
+match ← decodeReply httpStatus responseText with
+| .relayed r => … r.status, r.header? "location", r.body …
+| .refused status code => … Liaison.Denial.ofCode? code …
+```
+
+`Body.provider` reads provider, action, resource, run and org off the
+warrant's caveats (`Request.ofWarrant`), so the request cannot disagree with
+the warrant, and refuses an `account` that does not name the warrant's
+resource.
 
 ### Credentials
 

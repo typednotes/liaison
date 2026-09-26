@@ -135,6 +135,20 @@ def Denial.code : Denial → String
   | .credentialUnavailable => "credential_unavailable"
   | .upstreamFailed => "upstream_failed"
 
+/-- Every denial, for reading a code back. -/
+def Denial.all : List Denial :=
+  [ .expired, .capabilityDenied, .resourceDenied, .budgetExceeded, .budgetUnavailable, .wrongRun
+  , .tagInvalid, .malformedWarrant, .inferenceNotImplemented, .urlDenied, .headerDenied
+  , .credentialUnavailable, .upstreamFailed ]
+
+/-- The denial a wire code names (what a client reads off a refusal). -/
+def Denial.ofCode? (code : String) : Option Denial :=
+  Denial.all.find? (·.code == code)
+
+/-- Codes read back: every denial's code names that denial. -/
+theorem Denial.ofCode?_code (d : Denial) : Denial.ofCode? d.code = some d := by
+  cases d <;> rfl
+
 /-- $$\text{Caveat.permits} : \text{Caveat} \to \text{Request} \to \text{Prop}$$
     Ported from `broker.md` §4 verbatim. -/
 def Caveat.permits : Caveat → Request → Prop

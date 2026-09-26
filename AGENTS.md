@@ -4,7 +4,7 @@
 described in `typednotes/typednotes`'s `docs/services/broker.md` and
 `docs/services/ledger.md`: verify a macaroon-style warrant, enforce a credit
 hold, make (or refuse) one outbound call, record the attempt. It is built on
-`linen` (pinned `v1.0.0`).
+`linen` (pinned `v1.2.0`).
 
 ## Layout
 
@@ -31,7 +31,7 @@ hold, make (or refuse) one outbound call, record the attempt. It is built on
   `Repr`/`ToString` on credentials, deliberately (`OAuthIssuer` has one: it
   is not secret).
 - `Liaison/Egress/Policy.lean` — pure request policy (`connections.md` §5):
-  `accountMatchesResource`, `checkCallerHeaders`, `urlWithinBase`/`checkUrl`/
+  `checkCallerHeaders`, `urlWithinBase`/`checkUrl`/
   `parseTarget`, `reservedQueryKeys`/`checkCallerQuery`/`appendQuery` (the
   SAS a credential appends), `needsRefresh`.
 - `Liaison/Egress/Secrets.lean` — `typednotes/secrets` HTTP client
@@ -53,8 +53,21 @@ hold, make (or refuse) one outbound call, record the attempt. It is built on
   applies it as an `infra` `postgresMigrations` history; `liaison` itself
   never migrates. Shipped migrations are append-only — add a new
   `sql/NNNN_*.sql` file instead of editing one.
-- `Liaison/Server.lean` — the HTTP wire format: parses a warrant + request
-  off the wire, calls `authorize` → `withReservation` → `callProvider`/
+- `Liaison/Wire.lean` — **the wire format, and liaison's Lean SDK**: the
+  `POST /v0/egress` body (`Body`, `Body.parse`/`decode`/`encode`, the
+  warrant/caveat/call codecs), `validAccount`/`accountMatchesResource`,
+  `Request.ofWarrant` (the request a warrant determines, with
+  `Request.ofWarrant_unique`), `Body.provider` (what a client sends), and
+  the replies (`Response`, `encodeResponse`, `encodeRefusal`, `Reply`,
+  `decodeReply`). Pure, and importing only the warrant *types*: a client
+  (`lun`) imports it without linking the HMAC, Postgres or egress code.
+  Keep it that way — nothing here may import `Warrant.Tag`, `Budget`,
+  `Audit`, `Egress.*` or `Server`. Its format is pinned literally by
+  `LiaisonTests/Liaison/WireTest.lean`'s `golden`; changing a field is a
+  wire change for every client (and for `typednotes`'s Rust caller, which
+  has its own copy).
+- `Liaison/Server.lean` — the HTTP boundary: decodes the body with
+  `Liaison.Wire`, calls `authorize` → `withReservation` → `callProvider`/
   `callInference`, records the attempt, shapes the response.
 - `Main.lean` — reads `LIAISON_ROOT_KEY`, `DATABASE_URL`,
   `SECRETS_HOST`/`SECRETS_PORT`/`SECRETS_INSECURE`, `SECRETS_USERNAME`+
@@ -128,14 +141,13 @@ Everything below is a deliberate v0 scope cut, not an oversight:
   against the warrant's. In v0 the only caller (`Server.lean`) always derives
   both from the same wire payload, but nothing in the type system enforces
   agreement between them if that changes.
-- **The wire format (`Liaison/Server.lean`)** is now the one
-  `connections.md` §5 fixes for requests, but the success envelope (hex
-  body) is still liaison's own design. Every parsing function in that file
-  is `private` (only `denialStatus` is public, for tests), deliberately, so nothing downstream is tempted to reuse
-  a half-trusted parser; a real end-to-end HTTP smoke test of it has not been
-  run as part of this implementation (would require a live Postgres pool and
-  a running `Main`; not exercised — see `LiaisonTests/Liaison/ServerTest.lean`'s
-  doc comment).
+- **The wire format (`Liaison/Wire.lean`)** is the one `connections.md` §5
+  fixes for requests, but the success envelope (hex body) is still liaison's
+  own design. The codecs are unit-tested (literal format, decode ∘ encode,
+  refusals), but a real end-to-end HTTP smoke test of the server has not been
+  run as part of the automated suite (it would require a live Postgres pool
+  and a running `Main` — see `LiaisonTests/Liaison/ServerTest.lean`'s doc
+  comment). `typednotes`'s Rust client keeps its own copy of the format.
 - **Warrant expiry still uses the caller's `now`** (`connections.md` §9);
   liaison's own wall clock is used only for Google `expires_at`, the vault
   token's expiry and the SigV4 timestamp.

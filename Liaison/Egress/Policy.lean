@@ -3,12 +3,10 @@
   connection (`typednotes/typednotes`'s `docs/connections.md` §5).
 
   Everything here is a total, pure function over strings, so every rule is
-  pinned by `#guard`s in `LiaisonTests/Liaison/Egress/PolicyTest.lean`:
+  pinned by `#guard`s in `LiaisonTests/Liaison/Egress/PolicyTest.lean`. (The
+  account rule — `call.account` names the warrant-bound resource — is part of
+  the wire format: `Wire.accountMatchesResource`.)
 
-  - `validAccount`/`accountMatchesResource` — `call.account` is
-    `{user_id}/{connection_id}` and its last segment is the warrant-bound
-    `resource`, so a warrant for one connection cannot read another's
-    credential.
   - `checkCallerHeaders` — caller headers may not set or override
     authentication, framing or anything the credential sets.
   - `urlWithinBase` + `parseTarget` — the outbound URL stays under the
@@ -24,26 +22,6 @@ import Liaison.Egress.Credential
 import Linen.Network.URI
 
 namespace Liaison.Egress
-
--- ── Account ──────────────────────────────────────────────────────────
-
-/-- One account segment: non-empty, `[A-Za-z0-9_-]` only. -/
-def validAccountSegment (s : String) : Bool :=
-  !s.isEmpty && s.all (fun c => c.isAlphanum || c == '_' || c == '-')
-
-/-- `call.account` is exactly two valid segments separated by one `/`. -/
-def validAccount (account : String) : Bool :=
-  match account.splitOn "/" with
-  | [u, c] => validAccountSegment u && validAccountSegment c
-  | _ => false
-
-/-- `validAccount`, and the connection segment equals the request's
-    `resource` (which the warrant's `resource` caveat binds). -/
-def accountMatchesResource (account resource : String) : Bool :=
-  validAccount account &&
-    (match account.splitOn "/" with
-     | [_, c] => c == resource
-     | _ => false)
 
 -- ── Caller headers ───────────────────────────────────────────────────
 

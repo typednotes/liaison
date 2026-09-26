@@ -2,6 +2,7 @@
 import Liaison.Warrant.Caveat
 import Liaison.Warrant.Core
 import Liaison.Warrant.Tag
+import Liaison.Wire
 import Liaison.Auth
 import Liaison.Budget
 import Liaison.Audit

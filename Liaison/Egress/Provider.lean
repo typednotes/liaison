@@ -20,6 +20,7 @@
 -/
 
 import Liaison.Budget
+import Liaison.Wire
 import Liaison.Clock
 import Liaison.Egress.Secrets
 import Liaison.Egress.Policy
@@ -32,7 +33,8 @@ namespace Liaison.Egress
 open Network.HTTP.Client
 open Network.HTTP.Types
 open Network.HTTP.Simple
-open Liaison (Reserved Response Denial)
+open Liaison (Reserved Denial)
+open Liaison.Wire (ProviderCall)
 
 /-- Everything `callProvider` needs from the environment. Never printable. -/
 structure EgressConfig where
@@ -52,19 +54,6 @@ def EgressConfig.fromEnv : IO EgressConfig := do
     if (oauth.get issuer).isNone then
       IO.eprintln s!"liaison: {issuer.envPrefix}_CLIENT_ID/{issuer.envPrefix}_CLIENT_SECRET unset; {issuer.kindName} refresh disabled"
   return { secrets, oauth }
-
-/-- A parsed `"call": {"kind": "provider", …}` (`connections.md` §5). -/
-structure ProviderCall where
-  /-- `{user_id}/{connection_id}`; checked by `Policy.accountMatchesResource`
-      in `Server.lean` before any reservation. -/
-  account : String
-  /-- Uppercase letters only (checked by `Server.lean`). -/
-  method  : String
-  url     : String
-  /-- Caller headers, in order. -/
-  headers : List (String × String) := []
-  /-- UTF-8 body. -/
-  body    : Option String := none
 
 /-- The authentication headers of a non-S3 credential: `Authorization:
     Bearer …` for `bearer` and the OAuth kinds, `{header}: {token}` for
@@ -145,11 +134,11 @@ private def buildRequest (cred : Credential) (call : ProviderCall) (target : Tar
 
 /-- The generic third-party egress call (`connections.md` §5). The fetched
     credential is used to build the outbound request here and is **never**
-    returned — this function's result carries only a `Liaison.Response` or a
+    returned — this function's result carries only a `Wire.Response` or a
     `Denial`, so there is no path for it to reach `Server.lean`'s response or
     the audit log. Never throws. -/
 def callProvider {r : Liaison.Request} (cfg : EgressConfig) (call : ProviderCall)
-    (_reserved : Reserved r) : IO (Except Denial (Response × Liaison.Credits)) := do
+    (_reserved : Reserved r) : IO (Except Denial (Wire.Response × Liaison.Credits)) := do
   match ← fetchCredential cfg.secrets r.provider call.account with
   | .error e =>
     IO.eprintln s!"liaison: credential {r.provider.value}/{call.account} unavailable: {e}"
@@ -176,7 +165,7 @@ def callProvider {r : Liaison.Request} (cfg : EgressConfig) (call : ProviderCall
           IO.eprintln s!"liaison: upstream {target.host} unreachable: {e}"
           pure none
       let some resp := resp? | return .error .upstreamFailed
-      let out : Response :=
+      let out : Wire.Response :=
         { status := resp.statusCode.statusCode.toUInt16
           headers := resp.headers.map (fun (n, v) => (toString n, v))
           body := resp.body }
@@ -193,7 +182,7 @@ def callProvider {r : Liaison.Request} (cfg : EgressConfig) (call : ProviderCall
     type and documents (by inspection, not by test — see that file) that it
     never returns `.ok`. -/
 def callInference {r : Liaison.Request} (_reserved : Reserved r)
-    : IO (Except Denial (Response × Liaison.Credits)) :=
+    : IO (Except Denial (Wire.Response × Liaison.Credits)) :=
   return .error .inferenceNotImplemented
 
 end Liaison.Egress
