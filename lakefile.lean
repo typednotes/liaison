@@ -80,10 +80,10 @@ run_cmd do
   let pq ← pkgAbsoluteLibs "libpq"
   mkDef `nativeLinkArgs pq
 
-require linen from git "https://github.com/typednotes/linen" @ "v1.2.0"
+require linen from git "https://github.com/typednotes/linen" @ "v1.5.0"
 
 package liaison where
-  version := v!"0.5.1"
+  version := v!"0.5.2"
 
 @[default_target]
 lean_lib Liaison where
