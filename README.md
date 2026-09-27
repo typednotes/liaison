@@ -1,28 +1,82 @@
-# liaison
+<p align="center">
+  <img src="logo.svg" alt="liaison" width="180">
+</p>
 
-A small delegation broker: verify a macaroon-style warrant, enforce a credit
-hold, make (or refuse) one outbound call, record the attempt. v0 of the
-service described in `typednotes/typednotes`'s `docs/services/broker.md` and
-`docs/services/ledger.md`. Built on [`linen`](https://github.com/typednotes/linen).
+<h1 align="center">liaison</h1>
 
-See [`AGENTS.md`](./AGENTS.md) for the module layout, test-running
-instructions, and the full list of what v0 deliberately does not implement.
+<p align="center">
+  <em>A small delegation broker in Lean 4: verify a warrant, hold the credit, make one call, record it.</em>
+</p>
 
-## Building
+<p align="center">
+  <a href="https://github.com/typednotes/liaison/actions/workflows/lean_action_ci.yml"><img src="https://github.com/typednotes/liaison/actions/workflows/lean_action_ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/typednotes/liaison/actions/workflows/docker-publish.yml"><img src="https://github.com/typednotes/liaison/actions/workflows/docker-publish.yml/badge.svg" alt="Docker publish"></a>
+  <a href="https://github.com/typednotes/liaison/pkgs/container/liaison"><img src="https://img.shields.io/badge/ghcr.io-typednotes%2Fliaison-blue?logo=docker" alt="Docker image"></a>
+  <a href="https://github.com/typednotes/liaison/tags"><img src="https://img.shields.io/github/v/tag/typednotes/liaison?label=version&sort=semver" alt="Version"></a>
+  <a href="https://lean-lang.org/"><img src="https://img.shields.io/badge/Lean-v4.34.0-blue" alt="Lean v4.34.0"></a>
+  <a href="https://github.com/typednotes/linen"><img src="https://img.shields.io/badge/built%20on-linen%20v1.2.0-c9b896" alt="Built on linen v1.2.0"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License: Apache 2.0"></a>
+</p>
 
-```
+---
+
+`liaison` is the single egress chokepoint through which delegated work reaches
+third-party providers. Each request carries a macaroon-style **warrant**;
+liaison verifies it, places a **credit hold**, makes (or refuses) exactly
+**one outbound call** with the stored credential, and **records the attempt**.
+It implements the service described in
+[`typednotes/typednotes`](https://github.com/typednotes/typednotes)'s
+`docs/services/broker.md` and `docs/services/ledger.md`, and is built on
+[`linen`](https://github.com/typednotes/linen).
+
+## Table of contents
+
+- [Features](#features)
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+- [HTTP API](#http-api)
+- [Lean clients](#lean-clients)
+- [Credentials](#credentials)
+- [Database schema](#database-schema)
+- [Docker](#docker)
+- [Project status](#project-status)
+- [License](#license)
+
+## Features
+
+- **Warrants** — HMAC-SHA256 tag chains with attenuating caveats (provider,
+  action, resource, run, expiry, budget); the tag is verified before any
+  caveat is trusted.
+- **Credit holds** — an atomic conditional insert against `ledger`'s
+  `credit_holds`/`credit_ledger`, settled or released around the call.
+- **Typed credentials** — `bearer`, `header`, Google/Dropbox/GitLab OAuth
+  (with refresh and vault write-back), AWS S3 (SigV4) and Azure SAS, fetched
+  from [`typednotes/secrets`](https://github.com/typednotes/secrets).
+- **Request confinement** — URLs pinned to the credential's `base_url`,
+  sensitive and framing headers refused, SAS parameters reserved.
+- **Audit** — every attempt, allowed or refused, writes exactly one
+  `audit_log` row.
+- **A pure wire module** — `Liaison.Wire` is both the format the server parses
+  and the Lean SDK clients import, without linking any HMAC, Postgres or
+  egress code.
+
+## Quick start
+
+### Build
+
+```sh
 lake build
 ```
 
-## Testing
+### Test
 
-```
+```sh
 LIAISON_ROOT_KEY=$(openssl rand -hex 32) lake build LiaisonTests
 ```
 
-## Running
+### Run
 
-```
+```sh
 LIAISON_ROOT_KEY=... DATABASE_URL=... SECRETS_HOST=... \
   SECRETS_USERNAME=liaison SECRETS_PASSWORD=... \
   GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... \
@@ -31,7 +85,7 @@ LIAISON_ROOT_KEY=... DATABASE_URL=... SECRETS_HOST=... \
   lake exe liaison
 ```
 
-### Environment
+## Configuration
 
 | Variable | Required | Notes |
 |---|---|---|
@@ -47,12 +101,13 @@ LIAISON_ROOT_KEY=... DATABASE_URL=... SECRETS_HOST=... \
 | `GITLAB_CLIENT_ID`, `GITLAB_CLIENT_SECRET` | no | the same, for `gitlab_oauth` (the app's gitlab.com OAuth application) |
 | `LIAISON_PORT` | no | default `8080` |
 
-## API
+## HTTP API
 
 - `GET /_health` → `200 ok` (liveness only).
-- `POST /v0/egress` — the one egress chokepoint (the wire format is
-  `Liaison/Wire.lean`, which Lean clients import — see below; the cross-service contract is
-  `typednotes/typednotes`'s `docs/connections.md` §5). The `call` object:
+- `POST /v0/egress` — the one egress chokepoint. The wire format is
+  [`Liaison/Wire.lean`](Liaison/Wire.lean), which Lean clients import (see
+  [Lean clients](#lean-clients)); the cross-service contract is
+  `typednotes/typednotes`'s `docs/connections.md` §5. The `call` object:
 
 ```jsonc
 "call": {
@@ -80,14 +135,14 @@ relaying whatever the provider answered. Every attempt writes exactly one
 | `upstream_failed` | 502 | the provider could not be reached |
 | `inference_not_implemented` | 501 | `{"kind": "inference"}` (stub) |
 
-### Lean clients
+## Lean clients
 
 `Liaison.Wire` is the format the server parses, and the module a Lean client
 imports to speak it (pure; it links none of liaison's HMAC, Postgres or egress
 code):
 
 ```lean
-require liaison from git "https://github.com/typednotes/liaison" @ "v0.5.0"
+require liaison from git "https://github.com/typednotes/liaison" @ "v0.5.1"
 ```
 
 ```lean
@@ -108,7 +163,7 @@ warrant's caveats (`Request.ofWarrant`), so the request cannot disagree with
 the warrant, and refuses an `account` that does not name the warrant's
 resource.
 
-### Credentials
+## Credentials
 
 Read from `secret/data/thirdparty/{provider}/{account}`; the `data` object is
 one of (every value a JSON string; optional `headers`: static headers added to
@@ -124,27 +179,43 @@ every call):
 | `s3` | `base_url`, `region`, `access_key_id`, `secret_access_key` | AWS SigV4, service `s3`, payload hash = SHA-256 of the body, signed headers `host;x-amz-content-sha256;x-amz-date` |
 | `azure_sas` | `base_url`, `sas` (a query string of SAS parameters only, with `sv` and `sig`) | the SAS appended to the call's query; the caller's query may not use any SAS parameter name (`url_denied`) |
 
-## Schema
+## Database schema
 
-`liaison` owns one table, `audit_log` (`sql/0001_audit_log.sql`), and writes
-`ledger`'s `credit_holds`/`credit_ledger`. It never migrates at startup: in
-production `typednotes-infra` reads `sql/*.sql` at the release tag and
-applies it as a declared migration history before the container rolls out
-(the container also waits for `ledger`'s history, whose tables it writes). For a local database, apply the
-app's, then `ledger`'s, then `sql/*.sql` here, in that order.
+`liaison` owns one table, `audit_log` ([`sql/0001_audit_log.sql`](sql/0001_audit_log.sql)),
+and writes `ledger`'s `credit_holds`/`credit_ledger`. It never migrates at
+startup: in production `typednotes-infra` reads `sql/*.sql` at the release tag
+and applies it as a declared migration history before the container rolls out
+(the container also waits for `ledger`'s history, whose tables it writes). For
+a local database, apply the app's, then `ledger`'s, then `sql/*.sql` here, in
+that order.
 
-## Docker usage
+## Docker
 
-Local image builds use [`podman`](https://podman.io/), not `docker`:
+Images are published to `ghcr.io/typednotes/liaison` — `edge` from `main`,
+and `latest`, `X.Y.Z` and `X.Y` from release tags.
 
-```
-podman build -t liaison .
-podman run --rm -p 8080:8080 \
+```sh
+docker run --rm -p 8080:8080 \
   -e LIAISON_ROOT_KEY=... -e DATABASE_URL=... \
   -e SECRETS_HOST=... -e SECRETS_USERNAME=liaison -e SECRETS_PASSWORD=... \
-  liaison
+  ghcr.io/typednotes/liaison:latest
 ```
 
-The GitHub Actions publish workflow (`.github/workflows/docker-publish.yml`)
-runs on GitHub-hosted runners and uses the standard `docker/*-action` steps —
-that is unrelated to local dev tooling and unaffected by the above.
+To build the image locally:
+
+```sh
+docker build -t liaison .
+```
+
+## Project status
+
+`liaison` is at **v0**: minimal but real. Deliberately out of scope for now —
+rate limiting, circuit breaking, OpenTelemetry, human-in-the-loop policy,
+warrant revocation and inference routing (`{"kind": "inference"}` is a loud,
+structured-denial stub). See [`AGENTS.md`](AGENTS.md) for the module layout,
+the full list of named gaps, and every deliberate deviation from the design
+docs.
+
+## License
+
+Licensed under the [Apache License, Version 2.0](LICENSE).
