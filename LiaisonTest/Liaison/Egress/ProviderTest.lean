@@ -19,7 +19,7 @@
   (`staticAuthHeaders`, `credentialQuery`).
 
   What *is* checked: `callInference`'s type (pinned by the `example` below,
-  the same signature-pinning convention `Tests/Linen/Crypto/JOSE/FFITest.lean`
+  the same signature-pinning convention `LinenTest/Linen/Crypto/JOSE/FFITest.lean`
   uses for IO/FFI-bound code that `#guard`/`#eval` cannot exercise
   deterministically), and — by inspection, not by test — that its body is
   the single line `return .error .inferenceNotImplemented`, which never

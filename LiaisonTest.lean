@@ -1,0 +1,15 @@
+import LiaisonTest.Liaison.Warrant.CaveatTest
+import LiaisonTest.Liaison.Warrant.CoreTest
+import LiaisonTest.Liaison.Warrant.TagTest
+import LiaisonTest.Liaison.WireTest
+import LiaisonTest.Liaison.AuthTest
+import LiaisonTest.Liaison.BudgetTest
+import LiaisonTest.Liaison.AuditTest
+import LiaisonTest.Liaison.ClockTest
+import LiaisonTest.Liaison.Egress.CredentialTest
+import LiaisonTest.Liaison.Egress.PolicyTest
+import LiaisonTest.Liaison.Egress.SecretsTest
+import LiaisonTest.Liaison.Egress.OAuthTest
+import LiaisonTest.Liaison.Egress.S3Test
+import LiaisonTest.Liaison.Egress.ProviderTest
+import LiaisonTest.Liaison.ServerTest

@@ -5,7 +5,7 @@
   **Requires `LIAISON_ROOT_KEY` in the environment to run.** `RootKey`'s
   only constructor is `RootKey.fromEnv` — deliberately no test-only
   backdoor, matching `Tag.lean`'s "no default/fallback key" design.
-  linen's own `Tests/Linen/Cloud/CredentialsTest.lean` notes exactly this
+  linen's own `LinenTest/Linen/Cloud/CredentialsTest.lean` notes exactly this
   limit: "Lean has no `setenv`", so an env-sourced value cannot be driven
   end to end from *inside* a `#eval`. The fix used there and here is the
   same: set the variable in the shell that invokes the build, e.g.
@@ -14,7 +14,7 @@
 
   (see `AGENTS.md`'s "Running tests" section). Every HMAC call below is a
   live OpenSSL FFI operation in `IO`, so — like
-  `Tests/Linen/Crypto/SigV4Test.lean` — it is exercised with `#eval` and a
+  `LinenTest/Linen/Crypto/SigV4Test.lean` — it is exercised with `#eval` and a
   `check` helper that throws on failure, since a thrown error fails the
   build; there is no deterministic `#guard` for FFI-bound code.
 -/

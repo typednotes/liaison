@@ -10,13 +10,9 @@ pass, so there are never two live copies.
 
 ## Security
 
-- [ ] **Compare warrant tags in constant time.** `verifyTag` compares with a
-  plain `==` (`Liaison/Warrant/Tag.lean:131-147`); its comment notes linen has
-  nothing to reuse. lun and lode each carry an identical `constantTimeEq`
-  (`lun/Lun/Server.lean:55`, `lode/Lode/Server.lean:59`), and linen's own
-  `JWS.verifySignature` has the same `==` (`linen/Linen/Crypto/JOSE/JWS.lean:64-73`).
-  Add one constant-time comparison to linen, use it in all four places, delete
-  the copies. (S)
+- [x] **Compare warrant tags in constant time.** `verifyTag` uses linen's
+  `Crypto.ConstantTime.eq` (linen 1.7.0), as do linen's JWS HMAC check, lun
+  and lode. (0.5.5)
 
 ## Duplicates of linen, and building blocks to move there
 
@@ -47,11 +43,11 @@ pass, so there are never two live copies.
 
 ## Workarounds that linen could remove
 
-- [ ] **CA bundle.** `Dockerfile:27-33` sets `SSL_CERT_FILE`/`SSL_CERT_DIR`
-  because linen's TLS only calls `SSL_CTX_set_default_verify_paths`
-  (`linen/ffi/tls.c:553`), which points at the toolchain builder's paths. lun,
-  lode, typednotes-infra and infra's scaffolds do the same. Fix once in linen
-  (fall back to the usual bundle locations). (S, FFI: every CI axis)
+- [x] **CA bundle.** Nothing to fix: `SSL_CTX_set_default_verify_paths`
+  (`linen/ffi/tls.c`) reads `SSL_CERT_FILE`/`SSL_CERT_DIR` first, then
+  OpenSSL's compiled-in paths, which on Ubuntu (`/usr/lib/ssl`) point at the
+  `ca-certificates` bundle. The `ENV` lines are redundant on this base and
+  keep the image correct on another; keep them.
 - [ ] **Untyped SQL parameters.** Every statement casts (`$1::uuid`,
   `$3::bigint`, `Budget.lean:54-60`) because linen sends parameter types as
   `NULL` (`linen/ffi/postgres.c:357-359`). Typed `Params` in linen would drop
@@ -61,7 +57,7 @@ pass, so there are never two live copies.
 
 ## Hygiene
 
-- [ ] **CI builds only `LiaisonTests`**, so the executable's link — the part
+- [ ] **CI builds only `LiaisonTest`**, so the executable's link — the part
   the copied flags exist for — is only exercised by the Docker build. Add
   `lake build liaison`, and a macOS leg (the lakefile has a dylib branch).
 - [ ] **Stale comment** at `lakefile.lean:69-73`: web-data no longer passes

@@ -11,6 +11,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
-      - run: sudo apt-get update && sudo apt-get install -y libpq-dev libssl-dev pkg-config unzip zlib1g-dev libsecret-1-dev
+      # linen's native build dependencies, from linen's own list at the
+      # version liaison requires.
+      - uses: typednotes/linen/.github/actions/setup-native-deps@v1.7.0
+        with:
+          keyring: false
+      # `test: false`: the tests need a root key, so they run in the next step.
       - uses: leanprover/lean-action@v1
-      - run: LIAISON_ROOT_KEY=$(openssl rand -hex 32) lake build LiaisonTests
+        with:
+          test: false
+      - run: LIAISON_ROOT_KEY=$(openssl rand -hex 32) lake test

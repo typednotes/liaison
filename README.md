@@ -14,7 +14,7 @@
   <a href="https://github.com/typednotes/liaison/pkgs/container/liaison"><img src="https://img.shields.io/badge/ghcr.io-typednotes%2Fliaison-blue?logo=docker" alt="Docker image"></a>
   <a href="https://github.com/typednotes/liaison/tags"><img src="https://img.shields.io/github/v/tag/typednotes/liaison?label=version&sort=semver" alt="Version"></a>
   <a href="https://lean-lang.org/"><img src="https://img.shields.io/badge/Lean-v4.34.0-blue" alt="Lean v4.34.0"></a>
-  <a href="https://github.com/typednotes/linen"><img src="https://img.shields.io/badge/built%20on-linen%20v1.6.2-c9b896" alt="Built on linen v1.6.2"></a>
+  <a href="https://github.com/typednotes/linen"><img src="https://img.shields.io/badge/built%20on-linen%20v1.7.0-c9b896" alt="Built on linen v1.7.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License: Apache 2.0"></a>
 </p>
 
@@ -131,8 +131,8 @@ time), or a **pinned test**.
 | A settled hold and its usage row commit together or not at all | Postgres: the state change and the `credit_ledger` insert are one transaction | [`Liaison/Budget.lean`](Liaison/Budget.lean) |
 | The credential never reaches the caller, and cannot be pointed elsewhere | code: auth/framing headers refused (`header_denied`), URL confined to the credential's `base_url` (`url_denied`); credentials have no `Repr`/`ToString` | [`Liaison/Egress/Policy.lean`](Liaison/Egress/Policy.lean), [`Liaison/Egress/Credential.lean`](Liaison/Egress/Credential.lean) |
 | Every attempt, allowed or refused, writes exactly one audit row, or the request fails loudly | code: one call site per outcome in `handleEgress`; `recordAttempt` throws rather than drop a row | [`Liaison/Server.lean`](Liaison/Server.lean), [`Liaison/Audit.lean`](Liaison/Audit.lean) |
-| liaison issues exactly the SQL `ledger` and the schema expect | test: every statement's text is pinned | [`LiaisonTests/Liaison/BudgetTest.lean`](LiaisonTests/Liaison/BudgetTest.lean), [`AuditTest.lean`](LiaisonTests/Liaison/AuditTest.lean) |
-| The wire format does not drift | test: the literal body is pinned (`golden`), plus `decode ∘ encode` | [`LiaisonTests/Liaison/WireTest.lean`](LiaisonTests/Liaison/WireTest.lean) |
+| liaison issues exactly the SQL `ledger` and the schema expect | test: every statement's text is pinned | [`LiaisonTest/Liaison/BudgetTest.lean`](LiaisonTest/Liaison/BudgetTest.lean), [`AuditTest.lean`](LiaisonTest/Liaison/AuditTest.lean) |
+| The wire format does not drift | test: the literal body is pinned (`golden`), plus `decode ∘ encode` | [`LiaisonTest/Liaison/WireTest.lean`](LiaisonTest/Liaison/WireTest.lean) |
 
 > **⚠ Known gap — the reserve race** (shared with `ledger`). A single
 > statement is atomic but not isolated from a concurrent one: under
@@ -192,7 +192,7 @@ openssl` on macOS; on Debian/Ubuntu, the `apt-get` line in
 ### Test
 
 ```sh
-LIAISON_ROOT_KEY=$(openssl rand -hex 32) lake build LiaisonTests
+LIAISON_ROOT_KEY=$(openssl rand -hex 32) lake test
 ```
 
 ### Run
@@ -263,7 +263,7 @@ imports to speak it (pure; it links none of liaison's HMAC, Postgres or egress
 code):
 
 ```lean
-require liaison from git "https://github.com/typednotes/liaison" @ "v0.5.4"
+require liaison from git "https://github.com/typednotes/liaison" @ "v0.5.5"
 ```
 
 ```lean

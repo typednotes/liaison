@@ -4,7 +4,7 @@
 described in `typednotes/typednotes`'s `docs/services/broker.md` and
 `docs/services/ledger.md`: verify a macaroon-style warrant, enforce a credit
 hold, make (or refuse) one outbound call, record the attempt. It is built on
-`linen` (pinned `v1.6.2`).
+`linen` (pinned `v1.7.0`).
 
 ## Layout
 
@@ -63,7 +63,7 @@ hold, make (or refuse) one outbound call, record the attempt. It is built on
   (`lun`) imports it without linking the HMAC, Postgres or egress code.
   Keep it that way — nothing here may import `Warrant.Tag`, `Budget`,
   `Audit`, `Egress.*` or `Server`. Its format is pinned literally by
-  `LiaisonTests/Liaison/WireTest.lean`'s `golden`; changing a field is a
+  `LiaisonTest/Liaison/WireTest.lean`'s `golden`; changing a field is a
   wire change for every client (and for `typednotes`'s Rust caller, which
   has its own copy).
 - `Liaison/Server.lean` — the HTTP boundary: decodes the body with
@@ -79,14 +79,14 @@ hold, make (or refuse) one outbound call, record the attempt. It is built on
 ## Running tests
 
 ```
-LIAISON_ROOT_KEY=$(openssl rand -hex 32) lake build LiaisonTests
+LIAISON_ROOT_KEY=$(openssl rand -hex 32) lake test
 ```
 
 The env var is required: `RootKey`'s only constructor is `RootKey.fromEnv`,
 and Lean has no `setenv` — an env-sourced value cannot be driven end to end
 from *inside* a `#eval` (the same limitation `linen`'s own
-`Tests/Linen/Cloud/CredentialsTest.lean` documents). `LiaisonTests/Liaison/Warrant/TagTest.lean`
-and `LiaisonTests/Liaison/AuthTest.lean` are the two files that need it; every
+`LinenTest/Linen/Cloud/CredentialsTest.lean` documents). `LiaisonTest/Liaison/Warrant/TagTest.lean`
+and `LiaisonTest/Liaison/AuthTest.lean` are the two files that need it; every
 other test file is pure `#guard`s or signature-pinning `example`s and builds
 without it.
 
@@ -108,11 +108,11 @@ Everything below is a deliberate v0 scope cut, not an oversight:
   `sorry`/`panic!`. Inference routing (`broker.md` §8) is unimplemented.
 - **No live-database test coverage.** Every SQL statement in
   `Liaison/Budget.lean` and `Liaison/Audit.lean` is pinned as literal `#guard`
-  text (`LiaisonTests/Liaison/BudgetTest.lean`,
-  `LiaisonTests/Liaison/AuditTest.lean`), but none of it has been exercised
+  text (`LiaisonTest/Liaison/BudgetTest.lean`,
+  `LiaisonTest/Liaison/AuditTest.lean`), but none of it has been exercised
   against a real Postgres connection as part of the automated test suite.
   `Liaison.Budget.Reserved`'s private constructor also means
-  `LiaisonTests/Liaison/Egress/ProviderTest.lean`/`LiaisonTests/Liaison/ServerTest.lean`
+  `LiaisonTest/Liaison/Egress/ProviderTest.lean`/`LiaisonTest/Liaison/ServerTest.lean`
   cannot construct one to drive `callProvider`/`callInference`/the HTTP
   handler end to end — see those files' own doc comments for the exact gap.
   Likewise the vault client (login, 403 retry, write-back), the Google
@@ -146,7 +146,7 @@ Everything below is a deliberate v0 scope cut, not an oversight:
   own design. The codecs are unit-tested (literal format, decode ∘ encode,
   refusals), but a real end-to-end HTTP smoke test of the server has not been
   run as part of the automated suite (it would require a live Postgres pool
-  and a running `Main` — see `LiaisonTests/Liaison/ServerTest.lean`'s doc
+  and a running `Main` — see `LiaisonTest/Liaison/ServerTest.lean`'s doc
   comment). `typednotes`'s Rust client keeps its own copy of the format.
 - **Warrant expiry still uses the caller's `now`** (`connections.md` §9);
   liaison's own wall clock is used only for Google `expires_at`, the vault
@@ -195,5 +195,5 @@ is always left to the user to review and do themselves.
   id⧺orgId)`), which `broker.md`'s tag chain does not do. This is a
   deliberate hardening: without it, a warrant's tag would still verify after
   changing its `orgId` in transit, since `orgId` never entered the HMAC input
-  at all. Pinned by `LiaisonTests/Liaison/Warrant/TagTest.lean`'s "Tamper 3"
+  at all. Pinned by `LiaisonTest/Liaison/Warrant/TagTest.lean`'s "Tamper 3"
   case.

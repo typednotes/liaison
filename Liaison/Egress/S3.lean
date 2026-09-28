@@ -2,7 +2,7 @@
   Liaison.Egress.S3 — AWS Signature Version 4 for an `s3` credential.
 
   A thin adapter over `linen`'s `Crypto.SigV4.sign` (the implementation
-  `linen`'s own `Tests/Linen/Crypto/SigV4Test.lean` pins against AWS's
+  `linen`'s own `LinenTest/Linen/Crypto/SigV4Test.lean` pins against AWS's
   published vectors). Service `s3`, the credential's region, payload hash =
   SHA-256 of the body, signed headers `host`, `x-amz-content-sha256`,
   `x-amz-date`.

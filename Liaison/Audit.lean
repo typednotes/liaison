@@ -48,7 +48,7 @@ private def sixText : Params (String × String × String × String × String × 
 
 /-- Insert one audit row. Params: warrant id, org id, run id, provider,
     action, outcome. SQL text is pinned by a literal-string `#guard` in
-    `LiaisonTests/Liaison/AuditTest.lean`. -/
+    `LiaisonTest/Liaison/AuditTest.lean`. -/
 def recordAttemptStmt : Statement (String × String × String × String × String × String) Unit :=
   Statement.command
     ("insert into audit_log (warrant_id, org_id, run_id, provider, action, outcome) " ++

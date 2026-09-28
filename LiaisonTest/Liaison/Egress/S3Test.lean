@@ -7,7 +7,7 @@
   List Objects examples), whose signed-header set is exactly the one
   `liaison` signs (`host;x-amz-content-sha256;x-amz-date`), plus one value
   pinned against `linen`'s own tested `Crypto.SigV4.sign`
-  (`Tests/Linen/Crypto/SigV4Test.lean`). Signing calls the OpenSSL HMAC FFI,
+  (`LinenTest/Linen/Crypto/SigV4Test.lean`). Signing calls the OpenSSL HMAC FFI,
   so those checks run under `#eval` (a thrown error fails the build).
 -/
 import Liaison.Egress.S3

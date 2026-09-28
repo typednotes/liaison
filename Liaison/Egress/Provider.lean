@@ -178,7 +178,7 @@ def callProvider {r : Liaison.Request} (cfg : EgressConfig) (call : ProviderCall
     "where does inference routing live") is explicitly out of scope for v0.
     This function type-checks, is wired into `Server.lean`'s routing, and
     unconditionally denies — never a silent success, never a bare
-    `sorry`/`panic!`. `LiaisonTests/Liaison/Egress/ProviderTest.lean` pins its
+    `sorry`/`panic!`. `LiaisonTest/Liaison/Egress/ProviderTest.lean` pins its
     type and documents (by inspection, not by test — see that file) that it
     never returns `.ok`. -/
 def callInference {r : Liaison.Request} (_reserved : Reserved r)

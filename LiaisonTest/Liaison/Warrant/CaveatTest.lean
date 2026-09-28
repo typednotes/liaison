@@ -4,7 +4,7 @@
   Every case here is pure (`Caveat.permits` is a `Prop` with a `Decidable`
   instance, so `decide` reduces at elaboration time) — no IO, no FFI,
   matching linen's own `#guard`-on-pure-values convention
-  (`Tests/Linen/Database/SQL/StatementTest.lean`).
+  (`LinenTest/Linen/Database/SQL/StatementTest.lean`).
 -/
 import Liaison.Warrant.Caveat
 

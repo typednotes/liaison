@@ -2,7 +2,7 @@
   Tests for `Liaison.Server`.
 
   The wire format itself (decoding requests, encoding replies) is
-  `Liaison.Wire`, tested in `LiaisonTests/Liaison/WireTest.lean`.
+  `Liaison.Wire`, tested in `LiaisonTest/Liaison/WireTest.lean`.
 
   **Gap, named here and in `AGENTS.md`:** the handler is exercised only by an
   actual HTTP request against a running `application`, which needs a live

@@ -3,7 +3,7 @@
   denial diagnosis.
 
   **Requires `LIAISON_ROOT_KEY` in the environment**, for the same reason
-  as `LiaisonTests/Liaison/Warrant/TagTest.lean` (`RootKey.fromEnv` is the only
+  as `LiaisonTest/Liaison/Warrant/TagTest.lean` (`RootKey.fromEnv` is the only
   constructor). Exercised via `#eval`, same rationale as that file.
 -/
 import Liaison.Auth

@@ -3,7 +3,7 @@
   connection (`typednotes/typednotes`'s `docs/connections.md` §5).
 
   Everything here is a total, pure function over strings, so every rule is
-  pinned by `#guard`s in `LiaisonTests/Liaison/Egress/PolicyTest.lean`. (The
+  pinned by `#guard`s in `LiaisonTest/Liaison/Egress/PolicyTest.lean`. (The
   account rule — `call.account` names the warrant-bound resource — is part of
   the wire format: `Wire.accountMatchesResource`.)
 

@@ -18,6 +18,7 @@
 import Liaison.Warrant.Core
 import Linen.Crypto.JOSE.FFI
 import Linen.Data.Hex
+import Linen.Crypto.ConstantTime
 
 namespace Liaison
 
@@ -94,7 +95,7 @@ private def mintingInput (id : WarrantId) (orgId : OrgId) : ByteArray :=
     forward **in minting order**. `Warrant.attenuate` prepends new caveats
     (so the most recently added caveat is at the head of `caveats`), which
     means minting order is `caveats.reverse` — this ordering is the single
-    highest-risk detail in this module; see `LiaisonTests/Liaison/Warrant/TagTest.lean`
+    highest-risk detail in this module; see `LiaisonTest/Liaison/Warrant/TagTest.lean`
     for the hand-computed multi-step round trip that pins it down. -/
 def recomputeTag (rootKey : RootKey) (id : WarrantId) (orgId : OrgId)
     (caveats : List Caveat) : IO ByteArray := do
@@ -114,7 +115,7 @@ def recomputeTag (rootKey : RootKey) (id : WarrantId) (orgId : OrgId)
     `recomputeTag`'s own `caveats` parameter is in attenuate order (it
     reverses internally to recover minting order — see its doc comment),
     so passing `caveatsInMintingOrder` straight through would fold it
-    backwards. `LiaisonTests/Liaison/Warrant/TagTest.lean`'s multi-attenuation
+    backwards. `LiaisonTest/Liaison/Warrant/TagTest.lean`'s multi-attenuation
     round trip caught this the first time this function was written
     without the `.reverse` below. -/
 def mintTag (rootKey : RootKey) (id : WarrantId) (orgId : OrgId)
@@ -130,18 +131,16 @@ structure VerifiedTag (w : Warrant) where
 
 /-- Recompute the HMAC chain and compare to `w.tag`.
 
-    **Not constant-time.** The comparison below is `ByteArray`'s ordinary
-    `==`. `linen`'s own HMAC verifier
-    (`Crypto.JOSE.JWS.verifySignature`, for `HS256`/`HS384`/`HS512`) does the
-    same plain `==` compare — there is no `CRYPTO_memcmp`-equivalent exposed
-    anywhere in `Crypto.JOSE.FFI` to reuse, confirmed by reading that module.
-    Per `proof-strategy.md`'s "never provable in Lean" table, constant-time
-    execution is a Tier-6 concern out of scope for v0, not a shortcut taken
-    here — `liaison` is exactly as timing-safe as `linen`'s own JOSE
-    verifier, no more and no less. -/
+    The comparison is linen's `Crypto.ConstantTime.eq`, which reads every
+    byte whatever it finds: a plain `==` returns at the first differing byte,
+    so its timing would tell a forger how much of a guessed tag is right.
+    Lengths are not hidden (a tag is always 32 bytes). That the compiled code
+    is free of timing leaks is not proved — per `proof-strategy.md`'s "never
+    provable in Lean" table it is a Tier-6 property; what is tested is that
+    the comparison is correct. -/
 def verifyTag (rootKey : RootKey) (w : Warrant) : IO (Option (VerifiedTag w)) := do
   let expected ← recomputeTag rootKey w.id w.orgId w.caveats
-  if expected == w.tag then
+  if Crypto.ConstantTime.eq expected w.tag then
     return some ⟨⟩
   else
     return none

@@ -21,7 +21,7 @@
 
   The request body and the response parser are pure (`refreshForm`,
   `parseTokenResponse`) and pinned in
-  `LiaisonTests/Liaison/Egress/OAuthTest.lean`; only `refreshToken` does I/O.
+  `LiaisonTest/Liaison/Egress/OAuthTest.lean`; only `refreshToken` does I/O.
 -/
 
 import Liaison.Egress.Credential

@@ -80,36 +80,30 @@ run_cmd do
   let pq ← pkgAbsoluteLibs "libpq"
   mkDef `nativeLinkArgs pq
 
-require linen from git "https://github.com/typednotes/linen" @ "v1.6.2"
+require linen from git "https://github.com/typednotes/linen" @ "v1.7.0"
 
 package liaison where
-  version := v!"0.5.4"
+  version := v!"0.5.5"
+  testDriver := "LiaisonTest"
 
 @[default_target]
 lean_lib Liaison where
 
--- `Liaison.Warrant.Tag`'s HMAC round trip (`Tests/Liaison/Warrant/TagTest.lean`,
--- `Tests/Liaison/AuthTest.lean`) is exercised via `#eval`, which runs through
+-- `Liaison.Warrant.Tag`'s HMAC round trip (`LiaisonTest/Liaison/Warrant/TagTest.lean`,
+-- `LiaisonTest/Liaison/AuthTest.lean`) is exercised via `#eval`, which runs through
 -- Lean's interpreter rather than compiled code. The interpreter resolves
 -- `@[extern]` declarations (`Crypto.JOSE.FFI.hmac`) by `dlopen`ing a shared
 -- library, so this lib is precompiled (matching linen's own
--- `lean_lib Tests where precompileModules := true`, confirmed by reading its
+-- `lean_lib LinenTest where precompileModules := true`, confirmed by reading its
 -- `lakefile.lean`) so the interpreter can find the native symbol.
 --
--- Named `LiaisonTests`, module tree rooted at `LiaisonTests.*` (not `Tests`):
--- `linen` itself has its own test tree rooted at the module namespace
--- `Tests.*` (its own `Tests.lean`/`Tests/Linen/...`). With both packages in
--- the same workspace declaring modules under a shared top-level `Tests`
--- name, Lake's cross-package module-to-source-file lookup for *every*
--- `Tests.Liaison.*` module resolved against **linen's** package root
--- instead of liaison's own (e.g. looking for
--- `.lake/packages/linen/Tests/Liaison/Warrant/CaveatTest.lean`, which of
--- course doesn't exist there) — a spurious `Running Tests.X` failure on
--- every module, even though the real, correct build/run of each module
--- (from the right path) ran afterward and passed. Renaming liaison's whole
--- test module tree away from the shared `Tests` prefix (to `LiaisonTests`)
--- fixed it — confirmed no more spurious failures after the rename.
-lean_lib LiaisonTests where
+-- Named `LiaisonTest` (module tree `LiaisonTest.*`), the `{Package}Test`
+-- convention of mathlib, batteries and aesop, and the package's `testDriver`
+-- (`lake test`). Not `Tests`: before linen 1.7.0 linen's own test tree was
+-- `Tests.*`, and two packages in one workspace with modules under the same
+-- top-level name made Lake resolve every `Tests.Liaison.*` module against
+-- linen's package root (a spurious `Running Tests.X` failure on each).
+lean_lib LiaisonTest where
   precompileModules := true
 
 @[default_target]

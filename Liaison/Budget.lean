@@ -49,7 +49,7 @@ structure Reserved (r : Request) where
 -- ── Statements ─────────────────────────────────────────────────────────
 --
 -- SQL text is pinned by literal-string `#guard`s in
--- `LiaisonTests/Liaison/BudgetTest.lean` so a future edit shows as a diff.
+-- `LiaisonTest/Liaison/BudgetTest.lean` so a future edit shows as a diff.
 --
 -- Every parameter is cast (`$1::uuid`, `$3::bigint`, `returning id::text`):
 -- linen sends parameters untyped, and against ledger's `uuid`/`bigint`

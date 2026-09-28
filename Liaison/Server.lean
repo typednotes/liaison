@@ -51,7 +51,7 @@ open Database.SQL.Pool (Pool)
 open Egress (EgressConfig callProvider callInference)
 
 /-- The HTTP status of each denial (`connections.md` §5 for the 0.3.0
-    ones). Public so `LiaisonTests/Liaison/ServerTest.lean` can pin it; the
+    ones). Public so `LiaisonTest/Liaison/ServerTest.lean` can pin it; the
     response body's `error` is `Denial.code`. -/
 def denialStatus : Denial → Status
   | .malformedWarrant => status400
