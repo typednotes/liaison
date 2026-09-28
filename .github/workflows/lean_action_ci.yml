@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - run: sudo apt-get update && sudo apt-get install -y libpq-dev libssl-dev pkg-config unzip zlib1g-dev libsecret-1-dev
       - uses: leanprover/lean-action@v1
       - run: LIAISON_ROOT_KEY=$(openssl rand -hex 32) lake build LiaisonTests

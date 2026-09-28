@@ -5,7 +5,7 @@
 <h1 align="center">liaison</h1>
 
 <p align="center">
-  <em>A small delegation broker in Lean 4: verify a warrant, hold the credit, make one call, record it.</em>
+  <em>A delegation broker in Lean 4: verify a warrant, hold the credit, make one call, record it — with the authority and spend checks carried in the types.</em>
 </p>
 
 <p align="center">
@@ -14,7 +14,7 @@
   <a href="https://github.com/typednotes/liaison/pkgs/container/liaison"><img src="https://img.shields.io/badge/ghcr.io-typednotes%2Fliaison-blue?logo=docker" alt="Docker image"></a>
   <a href="https://github.com/typednotes/liaison/tags"><img src="https://img.shields.io/github/v/tag/typednotes/liaison?label=version&sort=semver" alt="Version"></a>
   <a href="https://lean-lang.org/"><img src="https://img.shields.io/badge/Lean-v4.34.0-blue" alt="Lean v4.34.0"></a>
-  <a href="https://github.com/typednotes/linen"><img src="https://img.shields.io/badge/built%20on-linen%20v1.6.1-c9b896" alt="Built on linen v1.6.1"></a>
+  <a href="https://github.com/typednotes/linen"><img src="https://img.shields.io/badge/built%20on-linen%20v1.6.2-c9b896" alt="Built on linen v1.6.2"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License: Apache 2.0"></a>
 </p>
 
@@ -29,9 +29,15 @@ It implements the service described in
 `docs/services/broker.md` and `docs/services/ledger.md`, and is built on
 [`linen`](https://github.com/typednotes/linen).
 
+> Lean makes the authority and the hold lifecycle correct. Postgres makes the
+> spend concurrency correct. HMAC makes the warrant unforgeable.
+
 ## Table of contents
 
 - [Features](#features)
+- [Role](#role)
+- [Guarantees](#guarantees)
+- [How a call flows](#how-a-call-flows)
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
 - [HTTP API](#http-api)
@@ -59,14 +65,129 @@ It implements the service described in
 - **A pure wire module** — `Liaison.Wire` is both the format the server parses
   and the Lean SDK clients import, without linking any HMAC, Postgres or
   egress code.
+- **Proofs where they fit** — `Warrant.attenuate_monotone`,
+  `Request.ofWarrant_unique` and `Denial.ofCode?_code` are Lean theorems,
+  checked by the kernel on every build; the rest of the invariants are held
+  by private constructors, single Postgres statements or pinned tests (see
+  [Guarantees](#guarantees)).
+
+## Role
+
+In `typednotes`, delegated work (an agent run, a tool, a sub-tool) never holds
+a provider credential and never talks to a provider directly. It holds a
+**warrant** — a bearer token that says *what* it may do (provider, action,
+resource), *for which run*, *until when*, and *up to what cost* — and asks
+`liaison` to make the call on its behalf. `liaison` is therefore the one place
+where three things meet:
+
+| | Owned by | `liaison`'s part |
+|---|---|---|
+| **Authority** — may this caller do this? | the app, which mints warrants | verifies the HMAC chain against `LIAISON_ROOT_KEY`, then checks every caveat against the exact request |
+| **Spend** — can the org afford it? | [`ledger`](https://github.com/typednotes/ledger), which owns `credit_ledger`/`credit_holds` | places, settles and releases the hold on the request path, directly in Postgres |
+| **Credentials** — how do we authenticate upstream? | [`secrets`](https://github.com/typednotes/secrets), the vault | fetches, refreshes and writes back the credential; the caller never sees it |
+
+### The division of labour with `ledger`
+
+`ledger` is the record of what an org may spend, what is reserved and what
+was spent; `liaison` is the component that *spends*. They share tables, not
+an API:
+
+1. **Reserve** — before any outbound call, `liaison` inserts a `held` row in
+   `credit_holds` for the request's cost, *only if* `balance − held ≥ cost`
+   (one conditional `insert … select … where`, the statement `ledger` defines
+   in `Ledger/Sql/Reserve.lean`). No row, no call: the request is refused
+   with `budget_unavailable`.
+2. **Settle** — on success, in one transaction, the hold becomes `settled`
+   and a negative `usage` row is appended to `credit_ledger`.
+3. **Release** — on a refusal or an exception after the hold was placed, the
+   hold becomes `released` and nothing is charged.
+4. **Expire** — if `liaison` dies mid-call, the hold's 15-minute
+   `expires_at` passes and `ledger`'s sweeper releases it. A crash can delay
+   credit, never lose it.
+
+`ledger` owns the schema and its migrations; `liaison` owns only `audit_log`.
+`liaison` never migrates either: `typednotes-infra` applies `ledger`'s history
+before `liaison`'s (see [Database schema](#database-schema)).
+
+## Guarantees
+
+Each guarantee is held by one named mechanism: a **Lean type or theorem**
+(checked by the kernel when the library builds), **HMAC** (checked on every
+request), a **single Postgres statement** (checked by the database at run
+time), or a **pinned test**.
+
+| Guarantee | Held by | Where |
+|---|---|---|
+| No outbound call without a warrant whose tag verified *and* whose caveats permit that exact request | types: `Authorized r` has a private constructor; the only route in is `authorize`, which checks the tag (`VerifiedTag w`) before reading any caveat, and stores the proof `w.permits r` | [`Liaison/Auth.lean`](Liaison/Auth.lean) |
+| No outbound call without a live credit hold | types: `Reserved r` has a private constructor; the only route in is `withReservation`, and `callProvider`/`callInference` require one | [`Liaison/Budget.lean`](Liaison/Budget.lean), [`Liaison/Egress/Provider.lean`](Liaison/Egress/Provider.lean) |
+| Attenuating a warrant can only narrow it, never widen it | theorem `Warrant.attenuate_monotone` | [`Liaison/Warrant/Core.lean`](Liaison/Warrant/Core.lean) |
+| A warrant cannot be forged, have its caveats altered, or be moved to another org without the root key | HMAC-SHA256 chain over every caveat; `orgId` folded into the first link (`s₀ = HMAC(key, id ⧺ orgId)`); tag, spliced-caveat and org-swap tampering pinned in `TagTest` | [`Liaison/Warrant/Tag.lean`](Liaison/Warrant/Tag.lean) |
+| The root key comes from the environment, never from code | types: `RootKey` has a private constructor; the only route in is `RootKey.fromEnv` | [`Liaison/Warrant/Tag.lean`](Liaison/Warrant/Tag.lean) |
+| A client's request cannot disagree with its warrant | theorem `Request.ofWarrant_unique` | [`Liaison/Wire.lean`](Liaison/Wire.lean) |
+| A client can decode every refusal code liaison sends | theorem `Denial.ofCode?_code` | [`Liaison/Warrant/Caveat.lean`](Liaison/Warrant/Caveat.lean) |
+| **A hold is placed only if the org's balance covers it** — ⚠ *only under `SERIALIZABLE`*, see below | Postgres: one conditional `insert … select … where balance − held ≥ amount`, no read-then-write in application code | [`Liaison/Budget.lean`](Liaison/Budget.lean) |
+| Every hold is settled or released, including when the call throws | code: `withReservation` brackets the callback (`try`/`catch`, release on any exception); a crash is covered by `expires_at` and `ledger`'s sweeper | [`Liaison/Budget.lean`](Liaison/Budget.lean) |
+| A hold leaves `held` at most once, and never comes back | Postgres: every transition is `update … where state = 'held'` | [`Liaison/Budget.lean`](Liaison/Budget.lean) |
+| A settled hold and its usage row commit together or not at all | Postgres: the state change and the `credit_ledger` insert are one transaction | [`Liaison/Budget.lean`](Liaison/Budget.lean) |
+| The credential never reaches the caller, and cannot be pointed elsewhere | code: auth/framing headers refused (`header_denied`), URL confined to the credential's `base_url` (`url_denied`); credentials have no `Repr`/`ToString` | [`Liaison/Egress/Policy.lean`](Liaison/Egress/Policy.lean), [`Liaison/Egress/Credential.lean`](Liaison/Egress/Credential.lean) |
+| Every attempt, allowed or refused, writes exactly one audit row, or the request fails loudly | code: one call site per outcome in `handleEgress`; `recordAttempt` throws rather than drop a row | [`Liaison/Server.lean`](Liaison/Server.lean), [`Liaison/Audit.lean`](Liaison/Audit.lean) |
+| liaison issues exactly the SQL `ledger` and the schema expect | test: every statement's text is pinned | [`LiaisonTests/Liaison/BudgetTest.lean`](LiaisonTests/Liaison/BudgetTest.lean), [`AuditTest.lean`](LiaisonTests/Liaison/AuditTest.lean) |
+| The wire format does not drift | test: the literal body is pinned (`golden`), plus `decode ∘ encode` | [`LiaisonTests/Liaison/WireTest.lean`](LiaisonTests/Liaison/WireTest.lean) |
+
+> **⚠ Known gap — the reserve race** (shared with `ledger`). A single
+> statement is atomic but not isolated from a concurrent one: under
+> Postgres's default `READ COMMITTED`, two concurrent reserves for the same
+> org each evaluate `balance − held` without the other's uncommitted hold, so
+> both can succeed and together overspend. `liaison` does not set the
+> isolation level. The fix (e.g. a per-org `pg_advisory_xact_lock`) changes a
+> contract shared with `ledger` and is tracked there.
+
+What is **not** claimed:
+
+- **No Lean theorem states no-double-spend.** Lean cannot see two containers;
+  that is the reserve statement's job, with the caveat above.
+- **The tag comparison is not constant-time** (plain `==`, as in `linen`'s
+  JOSE verifier); see [`TODO.md`](TODO.md).
+- **Expiry is checked against the caller's `now`**, not liaison's clock.
+- **Cost is declared, not metered**: a provider call is charged the request's
+  full `cost` (capped by the warrant's `budget` caveat). `actual ≤ hold` is
+  not re-checked at settlement.
+- **A database outage looks like an empty budget**: both are
+  `budget_unavailable`.
+- **The SQL is pinned, not executed** by the test suite, and no live vault,
+  OAuth or S3 round trip runs in CI. Warrant revocation is not implemented.
+
+The full list of named gaps is in [`AGENTS.md`](AGENTS.md).
+
+## How a call flows
+
+```
+caller ──POST /v0/egress──▶ liaison
+                              1. decode           Liaison.Wire      → malformed_warrant
+                              2. authorize        HMAC, caveats     → tag_invalid, expired, …
+                              3. pre-check        account, headers  → malformed_warrant, header_denied
+                              4. reserve  ───────▶ credit_holds     → budget_unavailable
+                              5. credential ─────▶ secrets (+ OAuth refresh) → credential_unavailable (hold released)
+                              6. policy           URL, headers      → url_denied, header_denied  (hold released)
+                              7. one call ───────▶ provider         → upstream_failed            (hold released)
+                              8. settle  ────────▶ credit_holds + credit_ledger
+                              9. audit   ────────▶ audit_log         (every path, exactly once)
+caller ◀── 200 {status, headers, body} or {error} ─┘
+```
 
 ## Quick start
 
 ### Build
 
 ```sh
-lake build
+lake build            # the Liaison library and the `liaison` executable
 ```
+
+Requires the Lean toolchain in [`lean-toolchain`](lean-toolchain) (via
+[elan](https://github.com/leanprover/elan)), plus `libpq`, `pkg-config` and
+OpenSSL headers for `linen`'s native code (`brew install libpq pkg-config
+openssl` on macOS; on Debian/Ubuntu, the `apt-get` line in
+[`Dockerfile`](Dockerfile)).
 
 ### Test
 
@@ -142,7 +263,7 @@ imports to speak it (pure; it links none of liaison's HMAC, Postgres or egress
 code):
 
 ```lean
-require liaison from git "https://github.com/typednotes/liaison" @ "v0.5.2"
+require liaison from git "https://github.com/typednotes/liaison" @ "v0.5.4"
 ```
 
 ```lean

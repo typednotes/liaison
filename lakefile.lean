@@ -83,7 +83,7 @@ run_cmd do
 require linen from git "https://github.com/typednotes/linen" @ "v1.6.2"
 
 package liaison where
-  version := v!"0.5.3"
+  version := v!"0.5.4"
 
 @[default_target]
 lean_lib Liaison where
