@@ -1,18 +1,14 @@
 # syntax=docker/dockerfile:1
 FROM docker.io/library/ubuntu:24.04 AS builder
-# `unzip` is here for `linen`'s own lakefile, not `liaison`'s: `require linen`
-# downloads a pinned DuckDB release archive at lakefile-elaboration time
-# (i.e. as part of `lake build`, before any of `liaison`'s own code runs) and
-# unpacks it by shelling out to `unzip`. `zlib1g-dev`/`libsecret-1-dev` are
-# likewise for `linen`'s own FFI (`ffi/zlib.c`, `ffi/keychain.c`) — `liaison`
-# only calls into `linen`'s Postgres/SQL and crypto/JOSE modules, but Lake
-# still builds every one of `linen`'s `extern_lib` object files as part of
-# `lake build`, so all of its native dependencies are needed here too, not
-# just libpq's and OpenSSL's. Modeled on `ledger/Dockerfile` (same `linen`
-# dependency, same concerns), confirmed by reading it.
+# `require linen` builds linen's C shims and links its native libraries as
+# part of `lake build` (libpq, OpenSSL, zlib, libsecret; unzip for the DuckDB
+# archive its lakefile downloads) — even though `liaison` only calls into its
+# Postgres/SQL and crypto/JOSE modules. The list is linen's own (`ci/native-deps/apt.txt`), read
+# at the linen version `lakefile.lean` requires, so it cannot drift.
+ARG LINEN_REF=v1.7.0
+ADD https://raw.githubusercontent.com/typednotes/linen/${LINEN_REF}/ci/native-deps/apt.txt /tmp/linen-apt.txt
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      curl ca-certificates git libpq-dev libssl-dev pkg-config build-essential unzip \
-      zlib1g-dev libsecret-1-dev \
+      $(sed 's/#.*//' /tmp/linen-apt.txt) \
     && rm -rf /var/lib/apt/lists/*
 RUN curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
 ENV PATH="/root/.elan/bin:${PATH}"
