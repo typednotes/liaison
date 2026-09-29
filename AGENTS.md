@@ -4,7 +4,7 @@
 described in `typednotes/typednotes`'s `docs/services/broker.md` and
 `docs/services/ledger.md`: verify a macaroon-style warrant, enforce a credit
 hold, make (or refuse) one outbound call, record the attempt. It is built on
-`linen` (pinned `v1.9.0`).
+`linen` (pinned `v1.9.1`).
 
 ## Layout
 
