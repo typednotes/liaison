@@ -5,7 +5,7 @@ FROM docker.io/library/ubuntu:24.04 AS builder
 # archive its lakefile downloads) — even though `liaison` only calls into its
 # Postgres/SQL and crypto/JOSE modules. The list is linen's own (`ci/native-deps/apt.txt`), read
 # at the linen version `lakefile.lean` requires, so it cannot drift.
-ARG LINEN_REF=v1.9.1
+ARG LINEN_REF=v1.9.2
 ADD https://raw.githubusercontent.com/typednotes/linen/${LINEN_REF}/ci/native-deps/apt.txt /tmp/linen-apt.txt
 RUN apt-get update && apt-get install -y --no-install-recommends \
       $(sed 's/#.*//' /tmp/linen-apt.txt) \

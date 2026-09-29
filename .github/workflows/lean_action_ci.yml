@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v7
       # linen's native build dependencies, from linen's own list at the
       # version liaison requires.
-      - uses: typednotes/linen/.github/actions/setup-native-deps@v1.9.1
+      - uses: typednotes/linen/.github/actions/setup-native-deps@v1.9.2
         with:
           keyring: false
       # `test: false`: the tests need a root key, so they run in the next step.
