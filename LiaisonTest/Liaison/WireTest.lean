@@ -46,7 +46,7 @@ def body : Body := { warrant, request, call := .provider call }
 -- ── The format, literally ──
 
 /-- `body` on the wire. Pins every field name, the decimal strings and the hex
-    tag (linen's encoder escapes `/`). -/
+    tag. Linen 1.9.0 emits `/` without the optional JSON escape. -/
 def golden : String :=
   "{\"warrant\":{\"id\":\"w-1\",\"orgId\":\"org-1\",\"tag\":\"ab01\",\"caveats\":[" ++
   "{\"kind\":\"runId\",\"value\":\"run-1\"},{\"kind\":\"budget\",\"value\":\"0\"}," ++
@@ -55,10 +55,15 @@ def golden : String :=
   "{\"kind\":\"expiresAt\",\"value\":\"1790000000\"}]}," ++
   "\"now\":\"1700000000\",\"cost\":\"0\",\"provider\":\"github\",\"action\":\"read\"," ++
   "\"resource\":\"conn-1\",\"runId\":\"run-1\",\"orgId\":\"org-1\"," ++
-  "\"call\":{\"kind\":\"provider\",\"account\":\"user-1\\/conn-1\",\"method\":\"GET\"," ++
-  "\"url\":\"https:\\/\\/api.github.com\\/user\",\"headers\":{\"accept\":\"application\\/json\"}}}"
+  "\"call\":{\"kind\":\"provider\",\"account\":\"user-1/conn-1\",\"method\":\"GET\"," ++
+  "\"url\":\"https://api.github.com/user\",\"headers\":{\"accept\":\"application/json\"}}}"
 
 #guard body.encode == golden
+
+-- The earlier encoder's escaped slashes still decode to the same wire body.
+#guard match Body.parse (golden.replace "/" "\\/") with
+  | .ok b => sameBody b body
+  | .error _ => false
 
 /-- The same body as a client may write it: whitespace, another field order,
     upper-case hex, an unknown top-level field (ignored). -/
@@ -118,13 +123,13 @@ def replace (old new : String) : String := golden.replace old new
 #guard refused (replace "\"method\":\"GET\"" "\"method\":\"get\"")
 #guard refused (replace "\"method\":\"GET\"" "\"method\":\"GET \\r\\n\"")
 #guard refused (replace "\"method\":\"GET\"" "\"method\":\"\"")
-#guard refused (replace "{\"accept\":\"application\\/json\"}" "{\"accept\":1}")
-#guard refused (replace "{\"accept\":\"application\\/json\"}" "[]")
+#guard refused (replace "{\"accept\":\"application/json\"}" "{\"accept\":1}")
+#guard refused (replace "{\"accept\":\"application/json\"}" "[]")
 #guard refused (replace "\"kind\":\"provider\"" "\"kind\":\"shell\"")
 #guard refused (replace "\"orgId\":\"org-1\",\"call\"" "\"call\"")      -- a missing field
-#guard !refused (replace ",\"headers\":{\"accept\":\"application\\/json\"}" "")  -- headers optional
-#guard !refused (replace ",\"headers\":{\"accept\":\"application\\/json\"}" ",\"headers\":null")
-#guard refused (replace ",\"headers\":{\"accept\":\"application\\/json\"}" ",\"body\":7")
+#guard !refused (replace ",\"headers\":{\"accept\":\"application/json\"}" "")  -- headers optional
+#guard !refused (replace ",\"headers\":{\"accept\":\"application/json\"}" ",\"headers\":null")
+#guard refused (replace ",\"headers\":{\"accept\":\"application/json\"}" ",\"body\":7")
 
 -- ── What a warrant determines ──
 
@@ -170,7 +175,7 @@ def upstream : Response :=
     body := ⟨#[0x68, 0x69, 0x00, 0xff]⟩ }
 
 #guard encodeResponse upstream ==
-  "{\"status\":302,\"headers\":{\"Location\":\"https:\\/\\/codeload.github.com\\/x\",\"x\":\"\"},\"body\":\"686900ff\"}"
+  "{\"status\":302,\"headers\":{\"Location\":\"https://codeload.github.com/x\",\"x\":\"\"},\"body\":\"686900ff\"}"
 
 #guard match decodeReply 200 (encodeResponse upstream) with
   | .ok (.relayed r) => r.status == 302 && r.headers == upstream.headers && r.body.toList == upstream.body.toList

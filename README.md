@@ -14,7 +14,7 @@
   <a href="https://github.com/typednotes/liaison/pkgs/container/liaison"><img src="https://img.shields.io/badge/ghcr.io-typednotes%2Fliaison-blue?logo=docker" alt="Docker image"></a>
   <a href="https://github.com/typednotes/liaison/tags"><img src="https://img.shields.io/github/v/tag/typednotes/liaison?label=version&sort=semver" alt="Version"></a>
   <a href="https://lean-lang.org/"><img src="https://img.shields.io/badge/Lean-v4.34.0-blue" alt="Lean v4.34.0"></a>
-  <a href="https://github.com/typednotes/linen"><img src="https://img.shields.io/badge/built%20on-linen%20v1.7.0-c9b896" alt="Built on linen v1.7.0"></a>
+  <a href="https://github.com/typednotes/linen"><img src="https://img.shields.io/badge/built%20on-linen%20v1.9.0-c9b896" alt="Built on linen v1.9.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License: Apache 2.0"></a>
 </p>
 
@@ -55,7 +55,7 @@ It implements the service described in
   caveat is trusted.
 - **Credit holds** — an atomic conditional insert against `ledger`'s
   `credit_holds`/`credit_ledger`, settled or released around the call.
-- **Typed credentials** — `bearer`, `header`, Google/Dropbox/GitLab OAuth
+- **Typed credentials** — `bearer`, `header`, Google/Dropbox/GitLab/Microsoft OAuth
   (with refresh and vault write-back), AWS S3 (SigV4) and Azure SAS, fetched
   from [`typednotes/secrets`](https://github.com/typednotes/secrets).
 - **Request confinement** — URLs pinned to the credential's `base_url`,
@@ -220,6 +220,7 @@ LIAISON_ROOT_KEY=... DATABASE_URL=... SECRETS_HOST=... \
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | no | needed to refresh `google_oauth` credentials; without them a due refresh is `credential_unavailable` |
 | `DROPBOX_CLIENT_ID`, `DROPBOX_CLIENT_SECRET` | no | the same, for `dropbox_oauth` (the app's Dropbox app) |
 | `GITLAB_CLIENT_ID`, `GITLAB_CLIENT_SECRET` | no | the same, for `gitlab_oauth` (the app's gitlab.com OAuth application) |
+| `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | no | refresh `microsoft_oauth` for Outlook and Microsoft Calendar; same Entra Web app as Typednotes, personal + work/school accounts via the fixed common tenant |
 | `LIAISON_PORT` | no | default `8080` |
 
 ## HTTP API
@@ -297,6 +298,7 @@ every call):
 | `google_oauth` | `base_url`, `access_token`, `refresh_token`, `expires_at` (Unix s) | `Authorization: Bearer {access_token}`; refreshed at `https://oauth2.googleapis.com/token` when `expires_at - 60 ≤ now` (liaison's wall clock), then written back to the vault (best-effort) |
 | `dropbox_oauth` | as `google_oauth` | the same, refreshed at `https://api.dropboxapi.com/oauth2/token` |
 | `gitlab_oauth` | as `google_oauth` | the same, refreshed at `https://gitlab.com/oauth/token`; GitLab rotates the refresh token on every refresh, so a failed write-back means reconnecting |
+| `microsoft_oauth` | as `google_oauth` | the same, refreshed at `https://login.microsoftonline.com/common/oauth2/v2.0/token`; replaces the refresh token when returned |
 | `s3` | `base_url`, `region`, `access_key_id`, `secret_access_key` | AWS SigV4, service `s3`, payload hash = SHA-256 of the body, signed headers `host;x-amz-content-sha256;x-amz-date` |
 | `azure_sas` | `base_url`, `sas` (a query string of SAS parameters only, with `sv` and `sig`) | the SAS appended to the call's query; the caller's query may not use any SAS parameter name (`url_denied`) |
 

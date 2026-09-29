@@ -24,10 +24,15 @@ private def client : OAuthClient := { clientId := "id.apps", clientSecret := "s/
 #guard (OAuthIssuer.gitlab.tokenHost, OAuthIssuer.gitlab.tokenPath) ==
   ("gitlab.com", "/oauth/token")
 #guard [OAuthIssuer.google, .dropbox, .gitlab].map (·.envPrefix) == ["GOOGLE", "DROPBOX", "GITLAB"]
+#guard (OAuthIssuer.microsoft.tokenHost, OAuthIssuer.microsoft.tokenPath) ==
+  ("login.microsoftonline.com", "/common/oauth2/v2.0/token")
+#guard OAuthIssuer.microsoft.envPrefix == "MICROSOFT"
 
 -- Only the configured issuer's client is used.
 #guard ({ dropbox := some client } : OAuthClients).get .dropbox |>.isSome
 #guard ({ dropbox := some client } : OAuthClients).get .gitlab |>.isNone
+#guard ({ microsoft := some client } : OAuthClients).get .microsoft |>.isSome
+#guard ({ google := some client } : OAuthClients).get .microsoft |>.isNone
 
 private def parsed (s : String) : Option (String × Nat × Option String) :=
   (parseTokenResponse s).map (fun t => (t.accessToken, t.expiresIn, t.refreshToken))
@@ -42,6 +47,10 @@ private def parsed (s : String) : Option (String × Nat × Option String) :=
 #guard parsed ("{\"access_token\": \"glo\", \"token_type\": \"Bearer\", \"expires_in\": 7200, " ++
   "\"refresh_token\": \"glr\", \"created_at\": 1790000000, \"scope\": \"read_api\"}") ==
   some ("glo", 7200, some "glr")
+-- Microsoft returns a replacement refresh token in the same response shape.
+#guard parsed ("{\"access_token\": \"msa\", \"token_type\": \"Bearer\", \"expires_in\": 3599, " ++
+  "\"refresh_token\": \"msr2\", \"scope\": \"User.Read Calendars.Read\"}") ==
+  some ("msa", 3599, some "msr2")
 -- `expires_in` must be a non-negative JSON integer.
 #guard parsed "{\"access_token\": \"a\", \"expires_in\": \"3600\"}" == none
 #guard parsed "{\"access_token\": \"a\", \"expires_in\": 1.5}" == none

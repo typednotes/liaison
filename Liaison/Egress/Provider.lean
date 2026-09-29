@@ -40,7 +40,7 @@ open Liaison.Wire (ProviderCall)
 structure EgressConfig where
   secrets : SecretsConfig
   /-- One client per OAuth issuer, each `none` when its
-      `{GOOGLE,DROPBOX,GITLAB}_CLIENT_ID`/`_CLIENT_SECRET` are unset: that
+      `{GOOGLE,DROPBOX,GITLAB,MICROSOFT}_CLIENT_ID`/`_CLIENT_SECRET` are unset: that
       issuer's credentials still work until their token is due, and a due
       refresh is `credential_unavailable`. -/
   oauth   : OAuthClients
@@ -50,7 +50,7 @@ structure EgressConfig where
 def EgressConfig.fromEnv : IO EgressConfig := do
   let secrets ← SecretsConfig.fromEnv
   let oauth ← OAuthClients.fromEnv
-  for issuer in [OAuthIssuer.google, .dropbox, .gitlab] do
+  for issuer in [OAuthIssuer.google, .dropbox, .gitlab, .microsoft] do
     if (oauth.get issuer).isNone then
       IO.eprintln s!"liaison: {issuer.envPrefix}_CLIENT_ID/{issuer.envPrefix}_CLIENT_SECRET unset; {issuer.kindName} refresh disabled"
   return { secrets, oauth }

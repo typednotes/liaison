@@ -1,12 +1,12 @@
 /-
   Liaison.Egress.OAuth — refreshing `google_oauth`, `dropbox_oauth` and
-  `gitlab_oauth` credentials (`typednotes/typednotes`'s
+  `gitlab_oauth`, `microsoft_oauth` credentials (`typednotes/typednotes`'s
   `docs/connections.md` §5).
 
   When `expires_at - 60 ≤ now` (`Policy.needsRefresh`, `now` from
   `liaison`'s own wall clock), `liaison` exchanges the `refresh_token` at the
   issuer's token endpoint (`grant_type=refresh_token`, form encoded, with the
-  issuer's `{GOOGLE,DROPBOX,GITLAB}_CLIENT_ID`/`_CLIENT_SECRET`), uses the
+   issuer's `{GOOGLE,DROPBOX,GITLAB,MICROSOFT}_CLIENT_ID`/`_CLIENT_SECRET`), uses the
   new access token, and writes the updated credential back to the vault —
   best-effort, see `Provider.lean`.
 
@@ -15,6 +15,7 @@
   | `google` | `https://oauth2.googleapis.com/token` | kept, occasionally rotated |
   | `dropbox` | `https://api.dropboxapi.com/oauth2/token` | kept |
   | `gitlab` | `https://gitlab.com/oauth/token` | rotated on every refresh |
+  | `microsoft` | `https://login.microsoftonline.com/common/oauth2/v2.0/token` | replaced when returned |
 
   The endpoints are fixed here, per issuer — never read from the credential
   — so a stored credential cannot direct its refresh token elsewhere.
@@ -48,18 +49,21 @@ def OAuthIssuer.envPrefix : OAuthIssuer → String
   | .google => "GOOGLE"
   | .dropbox => "DROPBOX"
   | .gitlab => "GITLAB"
+  | .microsoft => "MICROSOFT"
 
 /-- The issuer's token endpoint host. -/
 def OAuthIssuer.tokenHost : OAuthIssuer → String
   | .google => "oauth2.googleapis.com"
   | .dropbox => "api.dropboxapi.com"
   | .gitlab => "gitlab.com"
+  | .microsoft => "login.microsoftonline.com"
 
 /-- The issuer's token endpoint path. -/
 def OAuthIssuer.tokenPath : OAuthIssuer → String
   | .google => "/token"
   | .dropbox => "/oauth2/token"
   | .gitlab => "/oauth/token"
+  | .microsoft => "/common/oauth2/v2.0/token"
 
 /-- `{prefix}_CLIENT_ID` + `{prefix}_CLIENT_SECRET`, both optional at
     startup: without them, every due refresh of that issuer's credentials
@@ -78,18 +82,21 @@ structure OAuthClients where
   google  : Option OAuthClient := none
   dropbox : Option OAuthClient := none
   gitlab  : Option OAuthClient := none
+  microsoft : Option OAuthClient := none
 
 /-- The client for `issuer`, if configured. -/
 def OAuthClients.get (clients : OAuthClients) : OAuthIssuer → Option OAuthClient
   | .google => clients.google
   | .dropbox => clients.dropbox
   | .gitlab => clients.gitlab
+  | .microsoft => clients.microsoft
 
 /-- Every issuer's client, from the environment. -/
 def OAuthClients.fromEnv : IO OAuthClients := do
   return { google := ← OAuthClient.fromEnv .google
            dropbox := ← OAuthClient.fromEnv .dropbox
-           gitlab := ← OAuthClient.fromEnv .gitlab }
+           gitlab := ← OAuthClient.fromEnv .gitlab
+           microsoft := ← OAuthClient.fromEnv .microsoft }
 
 /-- The `application/x-www-form-urlencoded` refresh body. Every value is
     percent-encoded (RFC 3986 unreserved set). The same for every issuer. -/
@@ -107,7 +114,7 @@ structure TokenResponse where
   refreshToken : Option String
 
 /-- Parse a token response: `access_token` (string), `expires_in` (JSON
-    integer), optional `refresh_token` (string). Google, Dropbox and GitLab
+    integer), optional `refresh_token` (string). Google, Dropbox, GitLab and Microsoft
     all answer in this shape. -/
 def parseTokenResponse (body : String) : Option TokenResponse := do
   let root ← (Data.Json.Decode.decode body).toOption

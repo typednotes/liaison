@@ -1,7 +1,7 @@
 /-
   Tests for `Liaison.Egress.Credential`: parsing the vault's `data` object
   for each kind of `docs/connections.md` §3.3 (`bearer`, `header`, the
-  three OAuth kinds, `s3`, `azure_sas`), refusing unknown/malformed
+   four OAuth kinds, `s3`, `azure_sas`), refusing unknown/malformed
   credentials, the header names each kind sets, and the refresh write-back
   shape.
 
@@ -38,6 +38,9 @@ private def dropboxJson : String :=
 private def gitlabJson : String :=
   "{\"kind\": \"gitlab_oauth\", \"base_url\": \"https://gitlab.com/api/v4\", " ++
   "\"access_token\": \"glo\", \"refresh_token\": \"glr\", \"expires_at\": \"1790007200\"}"
+private def microsoftJson : String :=
+  "{\"kind\": \"microsoft_oauth\", \"base_url\": \"https://graph.microsoft.com/v1.0\", " ++
+  "\"access_token\": \"msa\", \"refresh_token\": \"msr\", \"expires_at\": \"1790003600\"}"
 private def azureJson : String :=
   "{\"kind\": \"azure_sas\", \"base_url\": \"https://acme.blob.core.windows.net/notes\", " ++
   "\"sas\": \"sv=2022-11-02&sp=rl&se=2027-01-01&sig=abc%2B%3D\", " ++
@@ -57,6 +60,8 @@ private def authOf (s : String) : Option CredentialAuth := (parse s).map (·.aut
 #guard kindOf azureJson == some "azure_sas"
 #guard OAuthIssuer.ofKind? "gitlab_oauth" == some .gitlab
 #guard OAuthIssuer.ofKind? "oauth" == none
+#guard kindOf microsoftJson == some "microsoft_oauth"
+#guard OAuthIssuer.ofKind? "microsoft_oauth" == some .microsoft
 
 #guard (parse bearerJson).map (·.baseUrl) == some "https://api.github.com"
 #guard (parse s3Json).map (·.baseUrl) == some "https://s3.fr-par.scw.cloud/my-bucket"
@@ -161,6 +166,15 @@ private def sasCred (sas : String) : String :=
      | .oauth .gitlab a r e => a == "glo2" && r == "glr2" && e == 2
      | _ => false) &&
     c.raw.lookup "kind" == some (.string "gitlab_oauth")
+  | none => false
+#guard match (parse microsoftJson).map (fun c => c.refreshed "msa2" 1790007200 (some "msr2")) with
+  | some c =>
+    (match c.auth with
+     | .oauth .microsoft a r e => a == "msa2" && r == "msr2" && e == 1790007200
+     | _ => false) &&
+    c.raw.lookup "kind" == some (.string "microsoft_oauth") &&
+    c.raw.lookup "refresh_token" == some (.string "msr2") &&
+    c.setHeaderNames == ["authorization"]
   | none => false
 -- Kinds that are not refreshed come back unchanged.
 #guard match (parse azureJson).map (fun c => (c.refreshed "a" 1 none)) with

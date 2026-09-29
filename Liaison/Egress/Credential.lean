@@ -14,7 +14,7 @@
    "headers": {"anthropic-version": "2023-06-01"}}
   {"kind": "google_oauth", "base_url": "…", "access_token": "…",
    "refresh_token": "…", "expires_at": "1790000000"}
-  -- `dropbox_oauth` and `gitlab_oauth`: the same fields as `google_oauth`.
+   -- `dropbox_oauth`, `gitlab_oauth`, `microsoft_oauth`: same fields as `google_oauth`.
   {"kind": "s3", "base_url": "…", "region": "…", "access_key_id": "…",
    "secret_access_key": "…"}
   {"kind": "azure_sas", "base_url": "…", "sas": "sv=…&sig=…"}
@@ -44,6 +44,7 @@ inductive OAuthIssuer
   | google
   | dropbox
   | gitlab
+  | microsoft
   deriving DecidableEq, Repr
 
 /-- The credential `kind` of each issuer's refreshable tokens. -/
@@ -51,10 +52,11 @@ def OAuthIssuer.kindName : OAuthIssuer → String
   | .google => "google_oauth"
   | .dropbox => "dropbox_oauth"
   | .gitlab => "gitlab_oauth"
+  | .microsoft => "microsoft_oauth"
 
 /-- The issuer whose `kindName` is `kind`, if any. -/
 def OAuthIssuer.ofKind? (kind : String) : Option OAuthIssuer :=
-  [OAuthIssuer.google, .dropbox, .gitlab].find? (·.kindName == kind)
+  [OAuthIssuer.google, .dropbox, .gitlab, .microsoft].find? (·.kindName == kind)
 
 /-- The query parameters of an Azure shared access signature
     (lowercase). A `sas` may carry only these, and a caller's URL none of
