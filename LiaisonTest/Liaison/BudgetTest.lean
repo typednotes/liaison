@@ -4,10 +4,13 @@
   `Statement.sql` is plain data, so the credit-hold SQL text is pinned by
   literal-string `#guard`s — a future edit to any of these statements now
   shows as a diff here, per `Budget.lean`'s own comment pointing at this
-  file. No live Postgres connection is exercised (see `AGENTS.md`'s "Not
-  yet implemented": no live-database test coverage in v0).
+  file. Real HTTP/Postgres execution is exercised separately by
+  `LiaisonTest/integration/connectors.py`.
 -/
 import Liaison.Budget
+
+example {r : Liaison.Request} (reserved : Liaison.Reserved r) (usage : Liaison.BoundedUsage reserved) :
+    usage.actual ≤ r.cost := usage.withinHold
 
 open Liaison
 

@@ -73,6 +73,28 @@ private def orErr (o : Option α) (msg : String) : Except String α :=
   | some v => .ok v
   | none => .error msg
 
+mutual
+/-- Refuse ambiguous objects before converting to map-backed provider JSON.
+    Duplicate keys must never choose different selectors in different parsers. -/
+def uniqueKeys : Value → Bool
+  | .object fields => (fields.map Prod.fst).eraseDups.length == fields.length && uniqueFields fields
+  | .array values => uniqueValues values.toList
+  | _ => true
+private def uniqueFields : List (String × Value) → Bool
+  | [] => true
+  | (_, value) :: rest => uniqueKeys value && uniqueFields rest
+private def uniqueValues : List Value → Bool
+  | [] => true
+  | value :: rest => uniqueKeys value && uniqueValues rest
+end
+
+/-- Required/allowed object fields, including duplicate-key rejection. -/
+def objectFields (value : Value) (required allowed : List String) : Except String Unit := do
+  let some fields := value.asObject | throw "expected a JSON object"
+  unless uniqueKeys value && fields.all (fun entry => allowed.contains entry.1) &&
+      required.all (fun name => fields.any (fun entry => entry.1 == name)) do
+    throw "missing, duplicate or unsupported JSON field"
+
 private def getString (v : Value) (ctx field : String) : Except String String := do
   let f ← (v.getField field).mapError fun _ => s!"{ctx}.{field}: missing"
   orErr f.asString s!"{ctx}.{field}: not a string"
@@ -127,9 +149,40 @@ structure ProviderCall where
   body    : Option String := none
   deriving DecidableEq, Repr
 
+/-- Truthful conversation metadata; no arbitrary caller headers. -/
+structure NativeContext where
+  sessionId : String
+  initiator : String
+  client : String
+  deriving DecidableEq, Repr
+
+def NativeContext.valid (context : NativeContext) : Bool :=
+  !context.sessionId.isEmpty && context.sessionId.length ≤ 128 && validAccountSegment context.sessionId &&
+    ["user", "agent"].contains context.initiator && context.client == "typednotes-lode"
+
+/-- URL-free typed connector call. The broker derives the transport from the
+    operation and resource, so an authorized selector cannot mask another URL. -/
+structure ConnectorCall where
+  account : String
+  operation : String
+  resource : List String
+  /-- Operation-specific JSON, encoded as UTF-8 text, never request headers. -/
+  payload : String := "{}"
+  context : Option NativeContext := none
+  deriving DecidableEq, Repr
+
+/-- Shared validation for wire input, stored grants and native adapters. A
+    selector is a hierarchy, never an encoded path or an API query. -/
+def validResource (resource : List String) : Bool :=
+  resource.length ≤ 32 && resource.all (fun part =>
+    !part.isEmpty && part.toUTF8.size ≤ 255 && part != "." && part != ".." &&
+    !part.contains '/' && !part.contains '\\' && !part.contains '%' &&
+    part.all (fun (c : Char) => c.toNat ≥ 0x20 && !(0x7f ≤ c.toNat && c.toNat ≤ 0x9f)))
+
 /-- What to do once a request is authorized and its budget reserved. -/
 inductive Call
   | provider (call : ProviderCall)
+  | connector (call : ConnectorCall)
   | inference
   deriving DecidableEq, Repr
 
@@ -195,12 +248,37 @@ def decodeCall (v : Value) : Except String Call := do
       | some (.string s) => pure (some s)
       | some _ => .error "call.body: not a string"
     return .provider { account, method, url, headers, body }
+  | "connector" =>
+    objectFields v ["kind", "account", "operation", "resource"] ["kind", "account", "operation", "resource", "payload", "context"]
+    let account ← getString v "call" "account"
+    let operation ← getString v "call" "operation"
+    let resources ← (v.getField "resource").mapError fun _ => "call.resource: missing"
+    let resources ← orErr resources.asArray "call.resource: not an array"
+    let resource : List String ← resources.toList.mapM fun value => orErr value.asString "call.resource: not strings"
+    unless !operation.isEmpty && operation.length ≤ 64 && validResource resource do
+      throw "call: invalid connector operation/resource"
+    let payload ← match ← v.getFieldOpt "payload" with
+      | none => pure "{}"
+      | some (.string s) => pure s
+      | some _ => throw "call.payload: must be JSON text"
+    let context ← match v.lookup "context" with
+      | none => pure none
+      | some value => do
+        objectFields value ["sessionId", "initiator", "client"] ["sessionId", "initiator", "client"]
+        let sessionId ← getString value "context" "sessionId"
+        let initiator ← getString value "context" "initiator"
+        let client ← getString value "context" "client"
+        let context : NativeContext := { sessionId, initiator, client }
+        unless context.valid && operation == "inference.generate" do throw "invalid native conversation context"
+        pure (some context)
+    return .connector { account, operation, resource, payload, context }
   | "inference" => return .inference
   | other => .error s!"call.kind: unknown call kind {other}"
 
 /-- A whole body, from its JSON text. -/
 def Body.parse (text : String) : Except String Body := do
   let root ← Data.Json.Decode.decode text
+  unless uniqueKeys root do throw "duplicate JSON field"
   let warrant ← decodeWarrant (← (root.getField "warrant").mapError fun _ => "warrant: missing")
   let request ← decodeRequest root
   let call ← decodeCall (← (root.getField "call").mapError fun _ => "call: missing")
@@ -236,7 +314,12 @@ def encodeCall : Call → Value
       [ ("kind", .string "provider"), ("account", .string c.account)
       , ("method", .string c.method), ("url", .string c.url)
       , ("headers", .object (c.headers.map fun (k, v) => (k, .string v))) ]
-      ++ (c.body.map fun b => [("body", .string b)]).getD []
+       ++ (c.body.map fun b => [("body", .string b)]).getD []
+  | .connector c => Value.object <|
+      [("kind", .string "connector"), ("account", .string c.account),
+       ("operation", .string c.operation), ("resource", .array (c.resource.map Value.string).toArray),
+        ("payload", .string c.payload)] ++ (c.context.map fun context => [("context", .object [
+          ("sessionId", .string context.sessionId), ("initiator", .string context.initiator), ("client", .string context.client)])]).getD []
 
 /-- A whole body, as JSON. -/
 def Body.toValue (b : Body) : Value :=
@@ -348,6 +431,15 @@ def Body.provider (w : Warrant) (now : UInt64) (cost : Credits) (call : Provider
   unless accountMatchesResource call.account request.resource.value do
     .error "call.account: must be {user_id}/{connection_id}, the connection being the warrant's resource"
   return { warrant := w, request, call := .provider call }
+
+def Body.connector (w : Warrant) (now : UInt64) (cost : Credits) (call : ConnectorCall) :
+    Except String Body := do
+  let request ← Request.ofWarrant w now cost
+  unless accountMatchesResource call.account request.resource.value do
+    throw "call.account: does not name the warranted connection"
+  unless call.operation == request.action.value do
+    throw "call.operation: does not match the warrant's operation"
+  return { warrant := w, request, call := .connector call }
 
 -- ── Replies ──────────────────────────────────────────────────────────
 

@@ -48,7 +48,7 @@ namespace Liaison
 
 open Network.HTTP.Types
 open Database.SQL.Pool (Pool)
-open Egress (EgressConfig callProvider callInference)
+open Egress (EgressConfig callProvider callInference callConnector)
 
 /-- The HTTP status of each denial (`connections.md` §5 for the 0.3.0
     ones). Public so `LiaisonTest/Liaison/ServerTest.lean` can pin it; the
@@ -99,6 +99,9 @@ private def handleEgress (rootKey : RootKey) (pool : Pool) (cfg : EgressConfig)
         provider := ⟨""⟩, action := ⟨""⟩, outcome := some .malformedWarrant }
     return denialResponse .malformedWarrant
   | .ok parsed =>
+    -- Expiry is decided using the broker's clock, never a replayed caller time.
+    let now ← nowUnixSeconds
+    let parsed := { parsed with request := { parsed.request with now := now.toUInt64 } }
     let mkRow (outcome : Option Denial) : AuditRow :=
       { warrantId := parsed.warrant.id, orgId := parsed.warrant.orgId, runId := parsed.request.runId
         provider := parsed.request.provider, action := parsed.request.action, outcome }
@@ -118,7 +121,10 @@ private def handleEgress (rootKey : RootKey) (pool : Pool) (cfg : EgressConfig)
             some .malformedWarrant
           else if !Egress.checkCallerHeaders [] call.headers then
             some .headerDenied
-          else none
+           else none
+        | .connector call =>
+          if !Wire.accountMatchesResource call.account parsed.request.resource.value ||
+              call.operation != parsed.request.action.value then some .capabilityDenied else none
       match preCheck with
       | some d => deny d
       | none =>
@@ -130,7 +136,8 @@ private def handleEgress (rootKey : RootKey) (pool : Pool) (cfg : EgressConfig)
             withReservation pool authorized (r := parsed.request) (fun reserved =>
               match parsed.call with
               | .inference => callInference reserved
-              | .provider call => callProvider cfg call reserved)
+               | .provider call => callProvider cfg call reserved
+               | .connector call => callConnector cfg call reserved)
           catch e =>
             IO.eprintln s!"liaison: hold lifecycle failed: {e}"
             pure (.error .budgetUnavailable)

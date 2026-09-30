@@ -5,7 +5,7 @@
 <h1 align="center">liaison</h1>
 
 <p align="center">
-  <em>A delegation broker in Lean 4: verify a warrant, hold the credit, make one call, record it — with the authority and spend checks carried in the types.</em>
+  <em>A delegation broker in Lean 4: verify a warrant, hold the credit, execute a scoped native operation, record it — with authority and local spend bounds carried in the types.</em>
 </p>
 
 <p align="center">
@@ -14,7 +14,7 @@
   <a href="https://github.com/typednotes/liaison/pkgs/container/liaison"><img src="https://img.shields.io/badge/ghcr.io-typednotes%2Fliaison-blue?logo=docker" alt="Docker image"></a>
   <a href="https://github.com/typednotes/liaison/tags"><img src="https://img.shields.io/github/v/tag/typednotes/liaison?label=version&sort=semver" alt="Version"></a>
   <a href="https://lean-lang.org/"><img src="https://img.shields.io/badge/Lean-v4.34.0-blue" alt="Lean v4.34.0"></a>
-  <a href="https://github.com/typednotes/linen"><img src="https://img.shields.io/badge/built%20on-linen%20v1.9.2-c9b896" alt="Built on linen v1.9.2"></a>
+  <a href="https://github.com/typednotes/linen"><img src="https://img.shields.io/badge/built%20on-linen%20v1.10.0-c9b896" alt="Built on linen v1.10.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License: Apache 2.0"></a>
 </p>
 
@@ -22,15 +22,21 @@
 
 `liaison` is the single egress chokepoint through which delegated work reaches
 third-party providers. Each request carries a macaroon-style **warrant**;
-liaison verifies it, places a **credit hold**, makes (or refuses) exactly
-**one outbound call** with the stored credential, and **records the attempt**.
+liaison verifies it, places a **credit hold**, executes (or refuses) a scoped
+**native operation** with the stored credential, and **records the attempt**.
+Native operations can include bounded relationship preflights.
 It implements the service described in
 [`typednotes/typednotes`](https://github.com/typednotes/typednotes)'s
 `docs/services/broker.md` and `docs/services/ledger.md`, and is built on
 [`linen`](https://github.com/typednotes/linen).
 
-> Lean makes the authority and the hold lifecycle correct. Postgres makes the
-> spend concurrency correct. HMAC makes the warrant unforgeable.
+The coordinated release line is **Liaison 0.6.0 / Linen 1.10.0**, verified with
+Lode/Lun 0.3.0 and Typednotes 0.6.0. Release versions, dependency pins and tags are
+managed together by the release owner.
+
+> Lean checks authority and local bounds. HMAC verifies warrants; Postgres
+> implements hold transitions. Concurrent spend isolation remains a separate
+> ledger concern (see [Guarantees](#guarantees)).
 
 ## Table of contents
 
@@ -58,18 +64,29 @@ It implements the service described in
 - **Typed credentials** — `bearer`, `header`, Google/Dropbox/GitLab/Microsoft OAuth
   (with refresh and vault write-back), AWS S3 (SigV4) and Azure SAS, fetched
   from [`typednotes/secrets`](https://github.com/typednotes/secrets).
-- **Request confinement** — URLs pinned to the credential's `base_url`,
-  sensitive and framing headers refused, SAS parameters reserved.
+- **Request confinement** — native transport derived inside the broker,
+  confined to the stored base or a fixed provider-owned origin mapping;
+  sensitive/framing headers and SAS parameters remain protected.
+- **Rich connector scopes** — named operations, structured selectors, and
+  organization/connection/cell/warrant intersections, with private prepared
+  execution witnesses. See [the native connector contract](docs/connector-permissions.md)
+  for coverage, payloads, independent hot policies and revocable run projections.
+- **Native writer protocols** — bounded context, local function tools and replay
+  for Messages/Chat/Responses/Gemini/Pi, plus authenticated repository checkout
+  and atomic scoped publication. See [the writer contract](docs/native-writer.md).
 - **Audit** — every attempt, allowed or refused, writes exactly one
   `audit_log` row.
 - **A pure wire module** — `Liaison.Wire` is both the format the server parses
   and the Lean SDK clients import, without linking any HMAC, Postgres or
   egress code.
-- **Proofs where they fit** — `Warrant.attenuate_monotone`,
-  `Request.ofWarrant_unique` and `Denial.ofCode?_code` are Lean theorems,
-  checked by the kernel on every build; the rest of the invariants are held
-  by private constructors, single Postgres statements or pinned tests (see
-  [Guarantees](#guarantees)).
+- **Kernel-checked authority evidence** — attenuation, four-ceiling resource
+  membership, secondary selectors, function allowlists, payload-indexed
+  publication and settlement bounds are carried in types/proofs consumed by
+  execution. Integration tests check parsing and native correspondence in
+  addition to those proofs; see [Guarantees](#guarantees).
+- **Hot revocation** — each native call reloads independent organization,
+  connection and warrant-keyed run documents. Closed ceilings or deleted run
+  projections deny subsequent calls even while the token's HMAC still verifies.
 
 ## Role
 
@@ -111,25 +128,29 @@ before `liaison`'s (see [Database schema](#database-schema)).
 
 ## Guarantees
 
-Each guarantee is held by one named mechanism: a **Lean type or theorem**
-(checked by the kernel when the library builds), **HMAC** (checked on every
-request), a **single Postgres statement** (checked by the database at run
-time), or a **pinned test**.
+Lean's kernel checks the local authority and arithmetic proofs; private
+constructors ensure execution consumes the validated witnesses. HMAC verification,
+vault ownership/ACLs, database behavior, native transport and remote provider
+semantics are explicit trusted boundaries. Tests supplement the proofs by
+checking their correspondence to parsers, HTTP, SQL and actual local Git.
 
 | Guarantee | Held by | Where |
 |---|---|---|
-| No outbound call without a warrant whose tag verified *and* whose caveats permit that exact request | types: `Authorized r` has a private constructor; the only route in is `authorize`, which checks the tag (`VerifiedTag w`) before reading any caveat, and stores the proof `w.permits r` | [`Liaison/Auth.lean`](Liaison/Auth.lean) |
-| No outbound call without a live credit hold | types: `Reserved r` has a private constructor; the only route in is `withReservation`, and `callProvider`/`callInference` require one | [`Liaison/Budget.lean`](Liaison/Budget.lean), [`Liaison/Egress/Provider.lean`](Liaison/Egress/Provider.lean) |
+| No native outbound call without verified, explicitly bound authority | types: private `Authorized r` carries `VerifiedTag w`, `w.permits r`, organization equality and required execution bindings; HTTP expiry uses the broker clock | [`Liaison/Auth.lean`](Liaison/Auth.lean), [`Liaison/Server.lean`](Liaison/Server.lean) |
+| No native outbound call without a reserved credit hold | types: private `Reserved r` is constructed through `withReservation` and consumed by `callConnector` and its credentialed native programs; SQL availability is a trusted runtime condition | [`Liaison/Budget.lean`](Liaison/Budget.lean), [`Liaison/Egress/Provider.lean`](Liaison/Egress/Provider.lean) |
+| Resource and byte authority is the four-ceiling intersection | types/proofs: private `Prepared`, `AuthorizedResource`, recursive attenuation and secondary-selector evidence; `Resolved` retains ordinary-adapter origin/method/account/body checks | [`Liaison/Egress/Connector.lean`](Liaison/Egress/Connector.lean), [`Provider.lean`](Liaison/Egress/Provider.lean) |
+| Local function replay and publication cannot substitute unvalidated selectors | types/proofs: `Prepared.function_allowed`, matched replay validation and payload-indexed private `AuthorizedPlan` consumed by publication | [`Liaison/Egress/Inference.lean`](Liaison/Egress/Inference.lean), [`Repository.lean`](Liaison/Egress/Repository.lean) |
+| Settlement does not exceed the reservation | private `BoundedUsage` carries `actual ≤ r.cost` into `settleReserved` | [`Liaison/Budget.lean`](Liaison/Budget.lean) |
 | Attenuating a warrant can only narrow it, never widen it | theorem `Warrant.attenuate_monotone` | [`Liaison/Warrant/Core.lean`](Liaison/Warrant/Core.lean) |
 | A warrant cannot be forged, have its caveats altered, or be moved to another org without the root key | HMAC-SHA256 chain over every caveat; `orgId` folded into the first link (`s₀ = HMAC(key, id ⧺ orgId)`); tag, spliced-caveat and org-swap tampering pinned in `TagTest` | [`Liaison/Warrant/Tag.lean`](Liaison/Warrant/Tag.lean) |
 | The root key comes from the environment, never from code | types: `RootKey` has a private constructor; the only route in is `RootKey.fromEnv` | [`Liaison/Warrant/Tag.lean`](Liaison/Warrant/Tag.lean) |
 | A client's request cannot disagree with its warrant | theorem `Request.ofWarrant_unique` | [`Liaison/Wire.lean`](Liaison/Wire.lean) |
 | A client can decode every refusal code liaison sends | theorem `Denial.ofCode?_code` | [`Liaison/Warrant/Caveat.lean`](Liaison/Warrant/Caveat.lean) |
-| **A hold is placed only if the org's balance covers it** — ⚠ *only under `SERIALIZABLE`*, see below | Postgres: one conditional `insert … select … where balance − held ≥ amount`, no read-then-write in application code | [`Liaison/Budget.lean`](Liaison/Budget.lean) |
+| A reservation checks balance and held amounts in one database statement | Postgres: conditional `insert … select … where balance − held ≥ amount`; this alone does not isolate concurrent reservations, see below | [`Liaison/Budget.lean`](Liaison/Budget.lean) |
 | Every hold is settled or released, including when the call throws | code: `withReservation` brackets the callback (`try`/`catch`, release on any exception); a crash is covered by `expires_at` and `ledger`'s sweeper | [`Liaison/Budget.lean`](Liaison/Budget.lean) |
 | A hold leaves `held` at most once, and never comes back | Postgres: every transition is `update … where state = 'held'` | [`Liaison/Budget.lean`](Liaison/Budget.lean) |
 | A settled hold and its usage row commit together or not at all | Postgres: the state change and the `credit_ledger` insert are one transaction | [`Liaison/Budget.lean`](Liaison/Budget.lean) |
-| The credential never reaches the caller, and cannot be pointed elsewhere | code: auth/framing headers refused (`header_denied`), URL confined to the credential's `base_url` (`url_denied`); credentials have no `Repr`/`ToString` | [`Liaison/Egress/Policy.lean`](Liaison/Egress/Policy.lean), [`Liaison/Egress/Credential.lean`](Liaison/Egress/Credential.lean) |
+| The broker never serializes credentials into replies or audit | private credential use, no credential `Repr`/`ToString`, no caller-selected transport/auth; fixed Dropbox and GitLab origin mappings are broker-owned. Provider behavior remains trusted | [`Liaison/Egress/Policy.lean`](Liaison/Egress/Policy.lean), [`Credential.lean`](Liaison/Egress/Credential.lean), [`Provider.lean`](Liaison/Egress/Provider.lean) |
 | Every attempt, allowed or refused, writes exactly one audit row, or the request fails loudly | code: one call site per outcome in `handleEgress`; `recordAttempt` throws rather than drop a row | [`Liaison/Server.lean`](Liaison/Server.lean), [`Liaison/Audit.lean`](Liaison/Audit.lean) |
 | liaison issues exactly the SQL `ledger` and the schema expect | test: every statement's text is pinned | [`LiaisonTest/Liaison/BudgetTest.lean`](LiaisonTest/Liaison/BudgetTest.lean), [`AuditTest.lean`](LiaisonTest/Liaison/AuditTest.lean) |
 | The wire format does not drift | test: the literal body is pinned (`golden`), plus `decode ∘ encode` | [`LiaisonTest/Liaison/WireTest.lean`](LiaisonTest/Liaison/WireTest.lean) |
@@ -142,20 +163,32 @@ time), or a **pinned test**.
 > isolation level. The fix (e.g. a per-org `pg_advisory_xact_lock`) changes a
 > contract shared with `ledger` and is tracked there.
 
-What is **not** claimed:
+### Revocation and trusted boundaries
+
+The app closes organization/connection ceilings and removes tracked run
+projections before acknowledging policy or declaration changes. The broker
+reloads those documents on every call; missing mandatory organization/run
+documents deny access. A valid, unexpired token therefore cannot restore revoked
+authority. In-flight requests retain their already-fetched snapshot.
+
+This is **policy/projection revocation**, not a per-token blacklist: there is no
+independent deny-list for otherwise valid warrant IDs/tags, and expiry does not
+cancel work already authorized in flight.
+
+The following limits remain explicit:
 
 - **No Lean theorem states no-double-spend.** Lean cannot see two containers;
   that is the reserve statement's job, with the caveat above.
-- **The tag comparison is not constant-time** (plain `==`, as in `linen`'s
-  JOSE verifier); see [`TODO.md`](TODO.md).
-- **Expiry is checked against the caller's `now`**, not liaison's clock.
-- **Cost is declared, not metered**: a provider call is charged the request's
-  full `cost` (capped by the warrant's `budget` caveat). `actual ≤ hold` is
-  not re-checked at settlement.
+- **Tag comparison uses `Crypto.ConstantTime.eq`**, not plain `==`. Correctness
+  is tested; compiled machine-code timing behavior is not a Lean theorem.
+- **Cost is declared, not metered**: a successful native operation is charged
+  the request's full `cost` (capped by the warrant's `budget` caveat).
+  `BoundedUsage` carries `actual ≤ hold` into the settlement path.
 - **A database outage looks like an empty budget**: both are
   `budget_unavailable`.
-- **The SQL is pinned, not executed** by the test suite, and no live vault,
-  OAuth or S3 round trip runs in CI. Warrant revocation is not implemented.
+- **The optional local integration suite executes real HTTP/Postgres** with
+  disposable vault/upstream fixtures, including native SigV4/SAS. Paid provider
+  conformance and live OAuth refresh are not tested.
 
 The full list of named gaps is in [`AGENTS.md`](AGENTS.md).
 
@@ -165,11 +198,11 @@ The full list of named gaps is in [`AGENTS.md`](AGENTS.md).
 caller ──POST /v0/egress──▶ liaison
                               1. decode           Liaison.Wire      → malformed_warrant
                               2. authorize        HMAC, caveats     → tag_invalid, expired, …
-                              3. pre-check        account, headers  → malformed_warrant, header_denied
+                              3. pre-check        account, operation → capability_denied
                               4. reserve  ───────▶ credit_holds     → budget_unavailable
-                              5. credential ─────▶ secrets (+ OAuth refresh) → credential_unavailable (hold released)
-                              6. policy           URL, headers      → url_denied, header_denied  (hold released)
-                              7. one call ───────▶ provider         → upstream_failed            (hold released)
+                              5. hot authority ──▶ organization, connection, run documents
+                              6. prepare          scoped selectors, payload/context/tools, byte bounds
+                              7. native program ─▶ credential + refresh, bounded preflights/effects
                               8. settle  ────────▶ credit_holds + credit_ledger
                               9. audit   ────────▶ audit_log         (every path, exactly once)
 caller ◀── 200 {status, headers, body} or {error} ─┘
@@ -185,9 +218,9 @@ lake build            # the Liaison library and the `liaison` executable
 
 Requires the Lean toolchain in [`lean-toolchain`](lean-toolchain) (via
 [elan](https://github.com/leanprover/elan)), plus `libpq`, `pkg-config` and
-OpenSSL headers for `linen`'s native code (`brew install libpq pkg-config
-openssl` on macOS; on Debian/Ubuntu, the `apt-get` line in
-[`Dockerfile`](Dockerfile)).
+OpenSSL/zlib headers for `linen`'s native code (`brew install libpq pkg-config
+openssl` plus the macOS Command Line Tools SDK; on Debian/Ubuntu, see the
+`apt-get` line in [`Dockerfile`](Dockerfile)).
 
 ### Test
 
@@ -233,14 +266,17 @@ LIAISON_ROOT_KEY=... DATABASE_URL=... SECRETS_HOST=... \
 
 ```jsonc
 "call": {
-  "kind": "provider",
+  "kind": "connector",
   "account": "{user_id}/{connection_id}",   // last segment must equal "resource"
-  "method": "GET",                          // uppercase letters only
-  "url": "https://api.github.com/user",     // base_url, base_url/…, or base_url?…
-  "headers": {"accept": "application/json"},  // optional, string → string
-  "body": "…"                               // optional, UTF-8 text
+  "operation": "objects.read",              // signed warrant action
+  "resource": ["reports", "invoice.json"],   // within all four ceilings
+  "payload": "{}"                          // operation-specific JSON text
 }
 ```
+
+The independent organization and run policies in the
+[native connector contract](docs/connector-permissions.md) are required.
+Legacy `kind: provider` calls decode for compatibility but are denied.
 
 On success the response is `200` with `{"status", "headers", "body": <hex>}`
 relaying whatever the provider answered. Every attempt writes exactly one
@@ -248,11 +284,11 @@ relaying whatever the provider answered. Every attempt writes exactly one
 
 | `error` | HTTP | When |
 |---|---|---|
-| `malformed_warrant` | 400 | unparsable body (including a `u64` field outside `[0, 2^64)`), bad `method`, `account` not `a/b` of `[A-Za-z0-9_-]` or its last segment ≠ `resource` |
-| `tag_invalid`, `capability_denied`, `resource_denied`, `wrong_run`, `expired`, `budget_exceeded` | 403 | warrant checks |
+| `malformed_warrant` | 400 | invalid wire/scalar/selector/context schema or incomplete execution bindings |
+| `tag_invalid`, `capability_denied`, `resource_denied`, `wrong_run`, `expired`, `budget_exceeded` | 403 | warrant, owner/operation, hot-policy, scoped-resource, payload/tool or byte-bound checks |
 | `budget_unavailable` | 402 | no hold could be placed (or the hold lifecycle's Postgres calls failed) |
-| `header_denied` | 400 | a caller header is `authorization`, `proxy-authorization`, `x-api-key`, `host`, `content-length`, `cookie`, `transfer-encoding`, `connection`, any `x-amz-*`, a header the credential sets, or malformed |
-| `url_denied` | 403 | URL not `base_url`, under `base_url + "/"`, or `base_url + "?"`; or unparsable, with userinfo, a fragment or a dot segment; or, for `azure_sas`, a query key that is a SAS parameter |
+| `header_denied` | 400 | malformed or conflicting native headers, or forbidden headers in a rejected legacy request; native callers cannot select headers |
+| `url_denied` | 403 | derived native target fails stored/fixed-provider origin, URI/path or reserved SAS-query checks; native callers cannot select URLs |
 | `credential_unavailable` | 502 | no credential, unknown `kind`, malformed credential, vault failure, OAuth refresh failed/impossible |
 | `upstream_failed` | 502 | the provider could not be reached |
 | `inference_not_implemented` | 501 | `{"kind": "inference"}` (stub) |
@@ -264,7 +300,7 @@ imports to speak it (pure; it links none of liaison's HMAC, Postgres or egress
 code):
 
 ```lean
-require liaison from git "https://github.com/typednotes/liaison" @ "v0.5.5"
+require liaison from git "https://github.com/typednotes/liaison" @ "v0.6.0"
 ```
 
 ```lean
@@ -272,18 +308,21 @@ import Liaison.Wire
 open Liaison.Wire
 
 -- `warrant ← decodeWarrant v` (v : Data.Json.Value, as the app handed it out), then per call:
-let body ← Body.provider warrant now 0
-  { account := "{user_id}/{connection_id}", method := "GET", url := "https://api.github.com/user" }
+let body ← Body.connector warrant now 0
+  { account := "{user_id}/{connection_id}", operation := "objects.read",
+    resource := ["reports", "invoice.json"], payload := "{}" }
 -- POST body.encode to /v0/egress, then:
 match ← decodeReply httpStatus responseText with
 | .relayed r => … r.status, r.header? "location", r.body …
 | .refused status code => … Liaison.Denial.ofCode? code …
 ```
 
-`Body.provider` reads provider, action, resource, run and org off the
+`Body.connector` reads provider, action, resource, run and org off the
 warrant's caveats (`Request.ofWarrant`), so the request cannot disagree with
 the warrant, and refuses an `account` that does not name the warrant's
-resource.
+resource. It additionally requires the call's named operation to match the
+warrant action. The coordinated release uses Linen 1.10.0 and Liaison 0.6.0;
+the local override workspace verifies their working trees before release tags.
 
 ## Credentials
 
@@ -332,12 +371,18 @@ docker build -t liaison .
 
 ## Project status
 
-`liaison` is at **v0**: minimal but real. Deliberately out of scope for now —
-rate limiting, circuit breaking, OpenTelemetry, human-in-the-loop policy,
-warrant revocation and inference routing (`{"kind": "inference"}` is a loud,
-structured-denial stub). See [`AGENTS.md`](AGENTS.md) for the module layout,
-the full list of named gaps, and every deliberate deviation from the design
-docs.
+The **0.6.0 release line** implements native connector permissions, hot-policy/
+run-projection revocation, bounded model protocols and atomic scoped repository
+publication. The shared catalog covers **54 providers / 165 supported pairs**
+with zero unsupported advertised pairs. Coordinated local verification reports
+**99 API tests, 24 browser groups, 655 real broker cases and 69 real compiled
+runtime cases**, including app-to-writer-to-broker-to-runtime handoffs.
+
+Rate limiting, circuit breaking, OpenTelemetry, human-in-the-loop policy, a
+per-token blacklist and usage-based billing remain outside this release. The
+deprecated `kind: inference` entry is a refusal; native model routing is
+implemented through `kind: connector`. See [`AGENTS.md`](AGENTS.md) and the
+contracts for the remaining trusted boundaries and supported-shape restrictions.
 
 ## License
 

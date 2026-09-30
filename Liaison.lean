@@ -13,4 +13,8 @@ import Liaison.Egress.Secrets
 import Liaison.Egress.OAuth
 import Liaison.Egress.S3
 import Liaison.Egress.Provider
+import Liaison.Egress.Connector
+import Liaison.Egress.Inference
+import Liaison.Egress.Repository
+import Liaison.Egress.GitPack
 import Liaison.Server

@@ -1,10 +1,12 @@
 # liaison — agent notes
 
-`liaison` is a v0, minimal-but-real implementation of the delegation broker
+`liaison` implements the native delegation broker
 described in `typednotes/typednotes`'s `docs/services/broker.md` and
 `docs/services/ledger.md`: verify a macaroon-style warrant, enforce a credit
-hold, make (or refuse) one outbound call, record the attempt. It is built on
-`linen` (pinned `v1.9.2`).
+hold, execute (or refuse) a bounded native operation, record the attempt.
+The coordinated release line is Liaison **0.6.0**, Linen **1.10.0**, Lode/Lun
+**0.3.0** and Typednotes **0.6.0**. The release owner manages actual versions,
+dependency pins, commits and tags together.
 
 ## Layout
 
@@ -17,11 +19,13 @@ hold, make (or refuse) one outbound call, record the attempt. It is built on
   cannot be re-attached to a different org without invalidating its tag.
   `broker.md` does not fold `orgId` into the tag at all. Documented here and
   in the module's own doc comment.
+  Verification compares tags with `Crypto.ConstantTime.eq`; the native HMAC
+  implementation and machine-code timing behavior remain trusted boundaries.
 - `Liaison/Auth.lean` — `Authorized`, `authorize` (verify tag, then check
   `permits`, in that order — an unverified warrant's caveats are not
   trustworthy input).
-- `Liaison/Budget.lean` — `Reserved`, `withReservation`, and the credit-hold
-  SQL (ported from `ledger.md` §7's atomic conditional-insert pattern).
+- `Liaison/Budget.lean` — `Reserved`, `BoundedUsage`, `withReservation`, and
+  credit-hold SQL (ported from `ledger.md` §7's conditional-insert pattern).
 - `Liaison/Clock.lean` — `nowUnixSeconds`, liaison's own wall clock (via
   `linen`'s `Data.Time.getCurrentTime` → `Std.Time.Timestamp.now`; no FFI).
 - `Liaison/Egress/Credential.lean` — the typed credential of
@@ -36,16 +40,27 @@ hold, make (or refuse) one outbound call, record the attempt. It is built on
   SAS a credential appends), `needsRefresh`.
 - `Liaison/Egress/Secrets.lean` — `typednotes/secrets` HTTP client
   (`SecretsConfig` with `userpass` login + cached token or static token,
-  `fetchCredential`, `writeCredential`).
-- `Liaison/Egress/OAuth.lean` — refresh for `google_oauth`, `dropbox_oauth`
-  and `gitlab_oauth` (`OAuthClients`, one optional client per issuer from
-  `{GOOGLE,DROPBOX,GITLAB}_CLIENT_ID`/`_SECRET`; token endpoints fixed per
+  `fetchCredential`, `writeCredential`) and independent connection, organization
+  and warrant-keyed run policy reads on every native call.
+- `Liaison/Egress/OAuth.lean` — refresh for Google, Dropbox, GitLab and Microsoft
+  (`OAuthClients`, one optional client per issuer from
+  `{GOOGLE,DROPBOX,GITLAB,MICROSOFT}_CLIENT_ID`/`_SECRET`; token endpoints fixed per
   issuer; `refreshForm`, `parseTokenResponse`, `refreshToken`).
 - `Liaison/Egress/S3.lean` — SigV4 for `s3` credentials over `linen`'s
   `Crypto.SigV4.sign` (`s3Canonical`, `s3AuthHeaders`).
-- `Liaison/Egress/Provider.lean` — `EgressConfig`, `callProvider` (generic
-  HTTP egress; never throws — every failure is a `Denial`) and
-  `callInference` (a loud, structured-denial stub — see below).
+- `Liaison/Egress/Provider.lean` — `EgressConfig`, native `callConnector`, private
+  credential use, scoped relationship preflights and bounded native execution.
+  Deprecated URL/method and `kind: inference` entries are structured refusals,
+  not alternative execution paths.
+- `Liaison/Egress/Connector.lean` — strict policy schemas, supported operations,
+  native request derivation and private `Prepared` witnesses. Read
+  `docs/connector-permissions.md` before changing a connector contract.
+- `Liaison/Egress/Inference.lean`, `Repository.lean`, `GitPack.lean` — bounded
+  writer protocols and local function-reference authorization; payload-indexed
+  publication witnesses and immutable tree/CAS transport. The exact caller
+  contract and native trusted boundaries are in `docs/native-writer.md`.
+  `LiaisonTest/integration/client` builds a real Lode SDK/Workspace fixture;
+  `native_writer.py` runs it through the compiled broker and actual local Git.
 - `Liaison/Audit.lean` — `recordAttempt`, writing to `audit_log`.
 - `sql/0001_audit_log.sql` — the `audit_log` table, the one table `liaison`
   owns (`credit_holds`/`credit_ledger` are `ledger`'s).
@@ -57,7 +72,7 @@ hold, make (or refuse) one outbound call, record the attempt. It is built on
   `POST /v0/egress` body (`Body`, `Body.parse`/`decode`/`encode`, the
   warrant/caveat/call codecs), `validAccount`/`accountMatchesResource`,
   `Request.ofWarrant` (the request a warrant determines, with
-  `Request.ofWarrant_unique`), `Body.provider` (what a client sends), and
+  `Request.ofWarrant_unique`), `Body.connector`, typed `NativeContext`, and
   the replies (`Response`, `encodeResponse`, `encodeRefusal`, `Reply`,
   `decodeReply`). Pure, and importing only the warrant *types*: a client
   (`lun`) imports it without linking the HMAC, Postgres or egress code.
@@ -67,12 +82,12 @@ hold, make (or refuse) one outbound call, record the attempt. It is built on
   wire change for every client (and for `typednotes`'s Rust caller, which
   has its own copy).
 - `Liaison/Server.lean` — the HTTP boundary: decodes the body with
-  `Liaison.Wire`, calls `authorize` → `withReservation` → `callProvider`/
-  `callInference`, records the attempt, shapes the response.
+  `Liaison.Wire`, uses the broker clock, calls `authorize` → `withReservation` →
+  `callConnector`, records the attempt and shapes the response.
 - `Main.lean` — reads `LIAISON_ROOT_KEY`, `DATABASE_URL`,
   `SECRETS_HOST`/`SECRETS_PORT`/`SECRETS_INSECURE`, `SECRETS_USERNAME`+
   `SECRETS_PASSWORD` (or the fallback `SECRETS_TOKEN`), the optional
-  `{GOOGLE,DROPBOX,GITLAB}_CLIENT_ID`/`_CLIENT_SECRET`, `LIAISON_PORT`
+  `{GOOGLE,DROPBOX,GITLAB,MICROSOFT}_CLIENT_ID`/`_CLIENT_SECRET`, `LIAISON_PORT`
   (default `8080`),
   then serves `Liaison.application` (`POST /v0/egress`, `GET /_health`).
 
@@ -94,70 +109,69 @@ without it.
 executable, and does not require the env var (the executable itself only
 calls `RootKey.fromEnv` at process start, not at build time).
 
-## Not yet implemented (named gaps, not silent omissions)
+## Guarantees, revocation and remaining limits
 
-Everything below is a deliberate v0 scope cut, not an oversight:
+`Authorized` carries verified HMAC, explicit bindings, caveat permission and
+organization equality. `Reserved` carries the real hold; `BoundedUsage` proves
+settlement is bounded by the reservation. Native `Prepared`/`Resolved`,
+payload-indexed `AuthorizedPlan`, function-reference witnesses and `CheckedSse`
+retain the evidence their execution paths consume. Resource intersection,
+attenuation, secondary-selector, function-name and local byte/arithmetic proofs
+are checked by Lean's kernel. Tests additionally verify parser, HTTP/SQL, FFI and
+remote-protocol correspondence; they do not replace those proofs.
 
-- **Phase 2, out of scope entirely for v0**: rate limiter, circuit breaker,
-  OpenTelemetry tracing/metrics, human-in-the-loop (HITL) policy, warrant
-  revocation checking, per-provider inference request shaping
-  (`Liaison/Egress/Inference/*.lean` — Baseten/Mistral/Scaleway-specific).
-- **`Liaison.Egress.callInference`** (`Liaison/Egress/Provider.lean`) is a
-  loud, structured-denial stub: it always returns
-  `.error .inferenceNotImplemented`, never a silent success, never
-  `sorry`/`panic!`. Inference routing (`broker.md` §8) is unimplemented.
-- **No live-database test coverage.** Every SQL statement in
-  `Liaison/Budget.lean` and `Liaison/Audit.lean` is pinned as literal `#guard`
-  text (`LiaisonTest/Liaison/BudgetTest.lean`,
-  `LiaisonTest/Liaison/AuditTest.lean`), but none of it has been exercised
-  against a real Postgres connection as part of the automated test suite.
-  `Liaison.Budget.Reserved`'s private constructor also means
-  `LiaisonTest/Liaison/Egress/ProviderTest.lean`/`LiaisonTest/Liaison/ServerTest.lean`
-  cannot construct one to drive `callProvider`/`callInference`/the HTTP
-  handler end to end — see those files' own doc comments for the exact gap.
-  Likewise the vault client (login, 403 retry, write-back), the Google
-  refresh round trip and a real SigV4 call against an S3 endpoint are not
-  exercised against live services; their pure parts (parsers, policy,
-  signatures against AWS's published S3 vectors) are.
-  A scratch-Postgres smoke test is optional future work, not done here.
-- **`callProvider` charges the warrant's full authorized cost regardless of
-  actual usage** (`Liaison/Egress/Provider.lean`, end of `callProvider`) — there is no
-  per-call cost model for generic HTTP egress (unlike inference, there is no
-  token count to meter on).
-- **`Liaison.Budget.withReservation`'s `actual ≤ h.amount` inequality is not
-  re-checked** (`Liaison/Budget.lean:144-146`) — `ledger.md` §5's
-  `Settlement` witness is not enforced here; a callback could in principle
-  report an `actual` cost exceeding the hold and it would be recorded as-is.
-- **`Denial` does not distinguish infra failure from a real denial**
-  (`Liaison/Budget.lean:105-111`): `reserveHold` returns
+Every call reloads separate hot organization/connection ceilings and a mandatory
+run projection. The trusted app closes ceilings and deletes tracked projections
+before acknowledging policy/declaration changes. A still-valid HMAC therefore
+does not restore revoked authority. This is independent policy/projection
+revocation, **not a separate warrant-ID/tag blacklist**. In-flight calls use
+their fetched snapshots, and expiry is checked at the HTTP authorization boundary.
+
+The following are actual limits, not completed native workflow blockers:
+
+- **Outside this release:** rate limiter, circuit breaker, OpenTelemetry,
+  human-in-the-loop policy and a per-token blacklist. Native model routing and
+  provider-shaped writer protocols are implemented through `callConnector`.
+- **Concurrent reservation isolation remains unresolved.** The conditional
+  reserve statement can overspend under concurrent `READ COMMITTED` requests;
+  it does not take a per-org lock or set `SERIALIZABLE`. No Lean theorem proves
+  no-double-spend. The shared ledger contract must supply the isolation fix.
+- **Paid provider conformance and live OAuth refresh are untested.** The
+  optional `LiaisonTest/integration/connectors.py` suite exercises compiled
+  HTTP, real HMAC and disposable Postgres with local vault/upstream fixtures,
+  including native SigV4/SAS, hot-policy/projection revocation, holds and audit.
+  Supported shapes and native trusted boundaries are explicit in
+  `docs/connector-permissions.md`.
+- **Native calls charge declared cost, not measured usage.** `BoundedUsage`
+  carries the settlement inequality; there is no token/usage-based cost model.
+- **`Denial` does not distinguish infra failure from a real denial**:
+  `reserveHold` in `Liaison/Budget.lean` returns
   `.error .budgetUnavailable` both when the balance is insufficient and when
   the Postgres call itself failed. No separate `Denial` variant exists for
   "the database is down." The same code is used when an exception escapes
   `withReservation` (a failed settle/release): `Server.lean` catches it and
   audits `budget_unavailable` — even if the provider call itself happened
   (its response is then not returned).
-- **`authorize` never cross-checks `Request.orgId` against `Warrant.orgId`**
-  (`Liaison/Auth.lean:39-47`) — a request's own `orgId` field is not compared
-  against the warrant's. In v0 the only caller (`Server.lean`) always derives
-  both from the same wire payload, but nothing in the type system enforces
-  agreement between them if that changes.
 - **The wire format (`Liaison/Wire.lean`)** is the one `connections.md` §5
   fixes for requests, but the success envelope (hex body) is still liaison's
-  own design. The codecs are unit-tested (literal format, decode ∘ encode,
-  refusals), but a real end-to-end HTTP smoke test of the server has not been
-  run as part of the automated suite (it would require a live Postgres pool
-  and a running `Main` — see `LiaisonTest/Liaison/ServerTest.lean`'s doc
-  comment). `typednotes`'s Rust client keeps its own copy of the format.
-- **Warrant expiry still uses the caller's `now`** (`connections.md` §9);
-  liaison's own wall clock is used only for Google `expires_at`, the vault
-  token's expiry and the SigV4 timestamp.
+  own design. The codecs and actual HTTP/Postgres connector path are tested
+  locally. Typednotes' Rust client keeps a matching native format; migration of
+  app/writer/runtime callers is complete. HTTP expiry uses the broker clock.
 - **Concurrent OAuth refreshes are not coalesced**: two requests that both
-  see a due token both refresh and both write back (last write wins; both
-  tokens are valid).
+  see a due token may both attempt refresh/write-back. Rotating refresh tokens
+  (notably GitLab) make such races a genuine reconnect risk.
 - **S3 requests sign only `host`, `x-amz-content-sha256`, `x-amz-date`**;
-  caller headers (e.g. `content-type`) and the credential's static headers
+  native headers (e.g. `content-type`) and the credential's static headers
   are sent unsigned, so a static `x-amz-*` header in an `s3` credential would
   be rejected by S3.
+
+The coordinated local handoffs pass: **99 API tests, 24 browser groups, 655 real
+broker cases and 69 real compiled-runtime cases**, plus Lean proofs/tests and
+executable links. The catalog has **54 providers / 165 supported pairs** and
+zero unsupported advertised operations. Remote API honesty, vault ACLs, SQL
+isolation/durability, container/process isolation, cryptographic/native FFI and
+socket/TLS behavior remain explicit trusted boundaries. These local fixtures do
+not claim paid-provider, live OAuth or Linux container conformance.
 
 ## Git
 
@@ -184,12 +198,16 @@ is always left to the user to review and do themselves.
   one, so a failed write-back (or two concurrent refreshes) leaves the
   connection unusable until it is reconnected. Google and Dropbox keep
   theirs.
-- **`call.method`** must be uppercase ASCII letters (`malformed_warrant`
-  otherwise), so nothing can be injected into the outbound request line.
-- **`account`/`resource` mismatch and a statically forbidden header are
-  checked after `authorize` and before a hold is placed**; headers the
-  credential sets and the URL are checked after the credential is fetched,
-  inside the hold (which is then released).
+- **Native transport is broker-owned.** Callers select a named operation and
+  scoped components, never a method/URL/header. Fixed Dropbox content and
+  GitLab same-host Git mappings are explicit native adapters, not unrestricted
+  origin grants. Deprecated raw calls remain denied.
+- **Connection/operation checks precede reservation; live authority and owner
+  checks precede credential use.** Native account/connection and signed-operation
+  mismatch denies before a hold. Inside the hold, the broker loads policies,
+  constructs authority and validates scoped resources, payload/context/tools
+  and derived transport;
+  refusals release the hold.
 
 - **`Tag.lean` folds `orgId` into the root HMAC input** (`s₀ = HMAC(rootKey,
   id⧺orgId)`), which `broker.md`'s tag chain does not do. This is a

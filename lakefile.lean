@@ -78,12 +78,20 @@ run_cmd do
     let lits : Array (TSyntax `term) := flags.map (fun s => quote s)
     elabCommand (← `(def $(mkIdent n) : Array String := #[$lits,*]))
   let pq ← pkgAbsoluteLibs "libpq"
-  mkDef `nativeLinkArgs pq
+  -- Native GitLab publication builds broker-owned RFC 1950 Git pack objects.
+  -- Like libpq, linen's zlib FFI needs flags at this consumer's final link.
+  let zlib ← if System.Platform.isOSX then do
+    let sdk ← IO.Process.output { cmd := "xcrun", args := #["--show-sdk-path"] }
+    if sdk.exitCode != 0 then throwError "liaison native Git packs require the macOS Command Line Tools SDK"
+    -- Name the SDK stub outright, without widening the libc search path.
+    pure #[sdk.stdout.trimAscii.toString ++ "/usr/lib/libz.tbd"]
+    else pkgAbsoluteLibs "zlib"
+  mkDef `nativeLinkArgs (pq ++ (if zlib.isEmpty then #["-lz"] else zlib))
 
-require linen from git "https://github.com/typednotes/linen" @ "v1.9.2"
+require linen from git "https://github.com/typednotes/linen" @ "v1.10.0"
 
 package liaison where
-  version := v!"0.5.8"
+  version := v!"0.6.0"
   testDriver := "LiaisonTest"
 
 @[default_target]

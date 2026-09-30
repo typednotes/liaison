@@ -47,6 +47,13 @@ def validHeaderName (n : String) : Bool :=
 def validHeaderValue (v : String) : Bool :=
   v.all (fun c => c == '\t' || (c.toNat ≥ 0x20 && c.toNat != 0x7f))
 
+/-- One strong validator, never `*`, a weak ETag, or a validator list. Native
+    preflight conditions must guard the exact version they observed. -/
+def strongEtag (value : String) : Bool :=
+  value.length > 2 && value.startsWith "\"" && value.endsWith "\"" &&
+    ((value.drop 1).toString.dropEnd 1).toString.all (fun c =>
+      c.toNat ≥ 0x21 && c.toNat ≤ 0x7e && c != '"' && c != ',')
+
 /-- Whether a (case-insensitive) caller header name is refused, given the
     names the credential itself sets (`Credential.setHeaderNames`,
     lowercased). -/

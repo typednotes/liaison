@@ -90,7 +90,8 @@ def handWritten : String := "{
 #guard roundTrips { body with call := .inference }
 #guard roundTrips { body with call := .provider { call with headers := [] } }
 #guard roundTrips { body with call := .provider { call with method := "POST", body := some "{\"a\": \"é\\n\"}" } }
-#guard roundTrips { body with call := .provider { call with headers := [("a", "1"), ("a", "2")] } }
+-- Duplicate JSON header keys are ambiguous across parsers, and refused.
+#guard (Body.parse (Body.encode { body with call := .provider { call with headers := [("a", "1"), ("a", "2")] } })).toOption.isNone
 #guard roundTrips { body with warrant := { warrant with caveats := [], tag := .empty } }
 -- The ends of the ranges.
 #guard roundTrips { body with request := { request with now := 0, cost := 0 } }

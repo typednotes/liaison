@@ -25,7 +25,7 @@
   `SECRETS_TOKEN`. `SecretsConfig.fromEnv` fails loudly if neither is set.
 -/
 
-import Liaison.Warrant.Caveat
+import Liaison.Wire
 import Liaison.Clock
 import Liaison.Egress.Credential
 import Linen.Network.HTTP.Simple
@@ -188,6 +188,7 @@ def fetchCredential (cfg : SecretsConfig) (provider : Provider) (account : Strin
     match Data.Json.Decode.decode text with
     | .error _ => return .error "secrets read: body is not JSON"
     | .ok root =>
+      unless Wire.uniqueKeys root do return .error "secrets read: duplicate JSON field"
       match root.lookup "data" with
       | none => return .error "secrets read: no data field"
       | some data =>
@@ -196,6 +197,57 @@ def fetchCredential (cfg : SecretsConfig) (provider : Provider) (account : Strin
         | some c => return .ok c
   catch e =>
     return .error s!"secrets read failed: {e}"
+
+/-- Independent permission document: policy updates never need the app to read
+    back a bearer key. Missing is legacy; malformed/unreachable is a refusal. -/
+def fetchPermissions (cfg : SecretsConfig) (provider : Provider) (account : String) :
+    IO (Except String (Option Data.Json.Value)) := do
+  try
+    let resp ← sendVault cfg .GET (credentialPath provider account ++ "/permissions")
+    if resp.statusCode.statusCode == 404 then return .ok none
+    unless resp.isSuccess do return .error "connection permissions are unavailable"
+    let some text := String.fromUTF8? resp.body | return .error "connection permissions are not UTF-8"
+    let root ← IO.ofExcept (Data.Json.Decode.decode text |>.mapError IO.userError)
+    unless Wire.uniqueKeys root do return .error "connection permissions have duplicate fields"
+    let some data := root.lookup "data" | return .error "connection permissions have no data"
+    return .ok (some data)
+  catch _ => return .error "connection permissions are unavailable"
+
+/-- This policy is written by the trusted run/minting service, not by a cell.
+    It must exist even for legacy connections. Its namespace is disjoint from
+    user-managed connection credentials and permissions. Missing never means
+    unrestricted. All path components come from the verified warrant. -/
+def fetchRunPermissions (cfg : SecretsConfig) (warrant : Warrant) (run : RunId) :
+    IO (Except String Data.Json.Value) := do
+  unless [warrant.orgId.value, run.value, warrant.id.value].all Wire.validAccountSegment do
+    return .error "invalid authority identity"
+  try
+    let path := s!"/v1/secret/data/connector-authority/{warrant.orgId.value}/{run.value}/{warrant.id.value}"
+    let resp ← sendVault cfg .GET path
+    unless resp.isSuccess do return .error "run authority is unavailable"
+    let some text := String.fromUTF8? resp.body | return .error "run authority is not UTF-8"
+    let root ← IO.ofExcept (Data.Json.Decode.decode text |>.mapError IO.userError)
+    unless Wire.uniqueKeys root do return .error "run authority has duplicate fields"
+    let some data := root.lookup "data" | return .error "run authority has no data"
+    return .ok data
+  catch _ => return .error "run authority is unavailable"
+
+/-- Live organization policy has its own namespace, independently of both the
+    connection owner and the run projection. No missing-policy default. -/
+def fetchOrganizationPermissions (cfg : SecretsConfig) (org : OrgId) (provider : Provider)
+    (connection : ResourceId) : IO (Except String Data.Json.Value) := do
+  unless [org.value, provider.value, connection.value].all Wire.validAccountSegment do
+    return .error "invalid organization policy identity"
+  try
+    let path := s!"/v1/secret/data/connector-policy/{org.value}/{provider.value}/{connection.value}"
+    let resp ← sendVault cfg .GET path
+    unless resp.isSuccess do return .error "organization policy is unavailable"
+    let some text := String.fromUTF8? resp.body | return .error "organization policy is not UTF-8"
+    let root ← IO.ofExcept (Data.Json.Decode.decode text |>.mapError IO.userError)
+    unless Wire.uniqueKeys root do return .error "organization policy has duplicate fields"
+    let some data := root.lookup "data" | return .error "organization policy has no data"
+    return .ok data
+  catch _ => return .error "organization policy is unavailable"
 
 /-- `POST secret/data/thirdparty/{provider}/{account}` with the credential
     object itself as the body (the KV engine stores the body as is). `.error`

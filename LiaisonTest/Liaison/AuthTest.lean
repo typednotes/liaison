@@ -49,6 +49,17 @@ private def baseReq : Request :=
   | .error _ => throw (IO.userError "expected authorize to succeed on a matching request")
   | .ok _ => pure ()
 
+  -- HMAC validity alone must not make an unbound warrant executable.
+  for caveats in [[], [Caveat.budget 100], successCaveats.filter (fun c => match c with | .runId _ => false | _ => true)] do
+    let tag ← mintTag rootKey wid org caveats
+    let incomplete : Warrant := { id := wid, orgId := org, caveats := caveats.reverse, tag }
+    match ← authorize rootKey incomplete baseReq with
+    | .error .malformedWarrant => pure ()
+    | _ => throw (IO.userError "expected unbound warrant refusal")
+  match ← authorize rootKey goodWarrant { baseReq with orgId := ⟨"different-org"⟩ } with
+  | .error .resourceDenied => pure ()
+  | _ => throw (IO.userError "expected request org binding refusal")
+
   -- ── `.tagInvalid`: same warrant, tampered tag ────────────────────────
   let badTag : ByteArray :=
     match tag.data[0]? with

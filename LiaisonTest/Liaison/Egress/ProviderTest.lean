@@ -1,19 +1,17 @@
 /-
   Tests for `Liaison.Egress.Provider`.
 
-  **Gap, named here and in `AGENTS.md`:** `callInference`'s "never returns
-  `.ok`" property cannot be given a black-box `IO` test in this file. Both
+  `callInference`'s "never returns `.ok`" property cannot be given a
+  black-box `IO` test in this pure module. Both
   `callProvider` and `callInference` take a `Reserved r`, and — by the
   chokepoint design `Provider.lean`'s own doc-comment describes — `Reserved`
   has no public constructor; the only way to obtain one is
   `Budget.withReservation`, which needs a live Postgres connection
-  (`Budget.reserveHold`). No such connection exists in this build's test
-  suite (see `AGENTS.md`'s "Not yet implemented": no live-database test
-  coverage in v0), so there is no way to construct a `Reserved r` here to
-  pass in.
+  (`Budget.reserveHold`). The separate `LiaisonTest/integration/connectors.py`
+  suite supplies disposable Postgres and exercises the actual HTTP broker.
 
-  The same constraint means `callProvider`'s orchestration (credential
-  fetch → header/URL policy → refresh → sign → send, every failure a
+  The same constraint means native `callConnector` orchestration (policy,
+  credential fetch → scope resolution → refresh → sign → send, every failure a
   `Denial`) is not driven end to end here; its pure parts are tested in
   `CredentialTest`, `PolicyTest`, `S3Test`, `OAuthTest` and below
   (`staticAuthHeaders`, `credentialQuery`).
@@ -23,10 +21,8 @@
   uses for IO/FFI-bound code that `#guard`/`#eval` cannot exercise
   deterministically), and — by inspection, not by test — that its body is
   the single line `return .error .inferenceNotImplemented`, which never
-  touches `_reserved` and has no other return path. A real end-to-end test
-  of this property is one of the reasons the optional scratch-Postgres
-  smoke test (`AGENTS.md`) is worth running before trusting this in
-  production.
+  touches `_reserved` and has no other return path. Generic `callProvider`
+  likewise unconditionally denies rather than bypass native operation scopes.
 -/
 import Liaison.Egress.Provider
 
@@ -40,6 +36,9 @@ example : {r : Request} → Reserved r → IO (Except Denial (Response × Credit
 example : {r : Request} → EgressConfig → ProviderCall →
     Reserved r → IO (Except Denial (Response × Credits)) :=
   @callProvider
+
+example : {r : Request} → EgressConfig → ConnectorCall →
+    Reserved r → IO (Except Denial (Response × Credits)) := @callConnector
 
 -- How each non-S3 kind authenticates (`docs/connections.md` §3.3).
 #guard staticAuthHeaders (.bearer "gho_x") == some [("Authorization", "Bearer gho_x")]

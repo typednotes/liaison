@@ -4,10 +4,9 @@
   The wire format itself (decoding requests, encoding replies) is
   `Liaison.Wire`, tested in `LiaisonTest/Liaison/WireTest.lean`.
 
-  **Gap, named here and in `AGENTS.md`:** the handler is exercised only by an
-  actual HTTP request against a running `application`, which needs a live
-  Postgres pool (`Liaison.Budget`) and so is not run as part of
-  `lake build LiaisonTests`.
+  The actual handler is exercised with disposable Postgres and local HTTP
+  fixtures by `LiaisonTest/integration/connectors.py`, separately from this
+  pure Lean build.
 
   What *is* checked: `application`'s public signature, and the
   denial → HTTP status / `error` code mapping (`denialStatus`, `Denial.code`),

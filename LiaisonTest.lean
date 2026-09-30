@@ -8,6 +8,10 @@ import LiaisonTest.Liaison.AuditTest
 import LiaisonTest.Liaison.ClockTest
 import LiaisonTest.Liaison.Egress.CredentialTest
 import LiaisonTest.Liaison.Egress.PolicyTest
+import LiaisonTest.Liaison.Egress.ConnectorTest
+import LiaisonTest.Liaison.Egress.InferenceTest
+import LiaisonTest.Liaison.Egress.RepositoryTest
+import LiaisonTest.Liaison.Egress.GitPackTest
 import LiaisonTest.Liaison.Egress.SecretsTest
 import LiaisonTest.Liaison.Egress.OAuthTest
 import LiaisonTest.Liaison.Egress.S3Test

@@ -46,6 +46,17 @@ structure Reserved (r : Request) where
   authorized : Authorized r
   holdId     : HoldId
 
+/-- Settlement cannot exceed the reservation, even if a future native adapter
+    reports a measured cost rather than today's full declared cost. -/
+structure BoundedUsage {r : Request} (reserved : Reserved r) where
+  private mk ::
+  actual : Credits
+  withinHold : actual ≤ r.cost
+
+def BoundedUsage.check? {r : Request} (reserved : Reserved r) (actual : Credits) :
+    Option (BoundedUsage reserved) :=
+  if h : actual ≤ r.cost then some ⟨actual, h⟩ else none
+
 -- ── Statements ─────────────────────────────────────────────────────────
 --
 -- SQL text is pinned by literal-string `#guard`s in
@@ -130,6 +141,11 @@ def settleHold (pool : Pool) (orgId : OrgId) (runId : RunId) (holdId : HoldId)
   | .ok () => pure ()
   | .error e => throw <| IO.userError s!"failed to settle hold {holdId.value}: {e}"
 
+/-- The execution path consumes the bound, rather than a bare reported cost. -/
+private def settleReserved {r : Request} (pool : Pool) (reserved : Reserved r)
+    (usage : BoundedUsage reserved) : IO Unit :=
+  settleHold pool reserved.authorized.warrant.orgId r.runId reserved.holdId usage.actual
+
 /-- Release a hold without recording usage. Throws loudly on failure, same
     rationale as `settleHold`. -/
 def releaseHold (pool : Pool) (holdId : HoldId) : IO Unit := do
@@ -143,8 +159,8 @@ def releaseHold (pool : Pool) (holdId : HoldId) : IO Unit := do
     including on exception"). The callback returns the actual cost incurred
     (which may differ from the warrant's `budget` caveat cap — settlement
     records what was actually spent, per `ledger.md` §5's `Settlement`
-    witness `actual ≤ h.amount`; that inequality is not re-checked here in
-    v0, a named gap — see `AGENTS.md`).
+    witness `actual ≤ h.amount`; `BoundedUsage` validates and carries that
+    inequality before settlement).
 
     The callback returns `Except Denial (Response × Credits)` rather than a
     bare `Response` so a structured refusal (e.g. `Egress.callInference`'s
@@ -164,7 +180,10 @@ def withReservation {r : Request} (pool : Pool) (a : Authorized r)
         releaseHold pool holdId
         return .error d
       | .ok (resp, actual) =>
-        settleHold pool a.warrant.orgId r.runId holdId actual
+        let some usage := BoundedUsage.check? reserved actual | do
+          releaseHold pool holdId
+          return .error .budgetExceeded
+        settleReserved pool reserved usage
         return .ok resp
     catch e =>
       releaseHold pool holdId
