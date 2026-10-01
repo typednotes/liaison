@@ -7,7 +7,8 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v7
@@ -21,3 +22,48 @@ jobs:
         with:
           test: false
       - run: LIAISON_ROOT_KEY=$(openssl rand -hex 32) lake test
+
+  native-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: liaison
+      - uses: actions/checkout@v7
+        with:
+          repository: typednotes/linen
+          ref: v1.10.0
+          path: linen
+      - uses: actions/checkout@v7
+        with:
+          repository: typednotes/lun
+          ref: v0.3.0
+          path: lun
+      - uses: actions/checkout@v7
+        with:
+          repository: typednotes/lode
+          ref: v0.3.0
+          path: lode
+      - uses: actions/checkout@v7
+        with:
+          repository: typednotes/typednotes
+          ref: v0.6.0
+          path: typednotes
+      - uses: typednotes/linen/.github/actions/setup-native-deps@v1.10.0
+        with:
+          keyring: false
+      - uses: leanprover/lean-action@v1
+        with:
+          lake-package-directory: liaison
+          test: false
+      - name: Install disposable PostgreSQL fixture tools
+        run: sudo apt-get install -y postgresql
+      - name: Build the actual writer SDK fixture
+        working-directory: liaison/LiaisonTest/integration/client
+        run: lake build writerClient
+      - name: Native operations, four ceilings, audit and catalog drift
+        working-directory: liaison
+        run: |
+          export PATH="$(pg_config --bindir):$PATH"
+          python3 LiaisonTest/integration/connectors.py --temp-root "$RUNNER_TEMP"
