@@ -82,6 +82,9 @@ class Mock(http.server.BaseHTTPRequestHandler):
         else:
             assert self.headers["Authorization"] == "Bearer local-provider-fixture"
         state["calls"].append((self.command, self.path, dict(self.headers), body))
+        if state.get("provider") == "github" and not self.headers.get("User-Agent", "").strip():
+            self.reply(403, {"message": "Request forbidden by administrative rules. User-Agent required."})
+            return
         parsed = urllib.parse.urlparse(self.path)
         if state.get("raw") is not None:
             self.reply_bytes(200, state["raw"].encode())
@@ -329,7 +332,7 @@ def main():
                     vault.state["documents"] = {credential_path: {"kind": "bearer", "base_url": f"http://127.0.0.1:{upstream.server_port}/base", "token": "local-provider-fixture"},
                         credential_path + "/permissions": copy.deepcopy(permissions), org_path: copy.deepcopy(permissions),
                         run_path: {"account": "user/connection", "cell": copy.deepcopy(capability), "warrant": copy.deepcopy(capability)}}
-                    upstream.state = {"vault": False, "calls": [], "reads": [], "documents": {}}
+                    upstream.state = {"vault": False, "provider": provider, "calls": [], "reads": [], "documents": {}}
                     vault.state["reads"] = []
                     return request, (credential_path, org_path, run_path)
 
@@ -362,7 +365,12 @@ def main():
 
                 for provider, operation, resource, payload in fixtures():
                     request, paths = setup(provider, operation, resource, payload)
-                    check(request)
+                    reply = check(request)
+                    if provider == "github":
+                        assert reply["status"] == 200, "GitHub rejected a request without User-Agent"
+                        for _, _, headers, _ in upstream.state["calls"]:
+                            agents = [value for name, value in headers.items() if name.lower() == "user-agent"]
+                            assert agents == ["typednotes-liaison"], (operation, headers)
                     assert upstream.state["calls"], (provider, operation)
                     assert vault.state["reads"].count(paths[0]) == 1, "credential was refetched"
                     method, path, _, body = upstream.state["calls"][-1]

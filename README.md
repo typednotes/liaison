@@ -25,12 +25,18 @@ third-party providers. Each request carries a macaroon-style **warrant**;
 liaison verifies it, places a **credit hold**, executes (or refuses) a scoped
 **native operation** with the stored credential, and **records the attempt**.
 Native operations can include bounded relationship preflights.
+The native HTTP API builder supplies a default `User-Agent: typednotes-liaison`,
+including GitHub repository preflights and publication, and preserves explicit
+model-provider identities. Deploy the broker fix to resolve GitHub's missing
+User-Agent 403; reconnecting an unchanged credential is not required.
 It implements the service described in
 [`typednotes/typednotes`](https://github.com/typednotes/typednotes/tree/main)'s
 [`docs/services/broker.md`](https://github.com/typednotes/typednotes/blob/main/docs/services/broker.md) and [`docs/services/ledger.md`](https://github.com/typednotes/typednotes/blob/main/docs/services/ledger.md), and is built on
 [`linen`](https://github.com/typednotes/linen/tree/main).
 
-The coordinated release line is **Liaison 0.6.0 / Linen 1.10.0**, verified with
+The current patch release is **Liaison 0.6.1**: the
+[GitHub User-Agent fix](https://github.com/typednotes/liaison/blob/main/docs/release-0.6.1.md).
+It retains the coordinated **Liaison 0.6.0 / Linen 1.10.0** contract, verified with
 Lode/Lun 0.3.0 and Typednotes 0.6.0. Release versions, dependency pins and tags are
 managed together by the release owner.
 

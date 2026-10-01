@@ -83,6 +83,8 @@ class Repository:
     def handle(self, handler, body):
         state = handler.server.state
         state["calls"].append((handler.command, handler.path, dict(handler.headers), body))
+        if self.provider == "github":
+            assert handler.headers.get_all("User-Agent") == ["typednotes-liaison"], handler.path
         parsed = urllib.parse.urlsplit(handler.path)
         query = urllib.parse.parse_qs(parsed.query)
         path = urllib.parse.unquote(parsed.path)

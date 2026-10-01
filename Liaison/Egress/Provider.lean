@@ -98,6 +98,25 @@ private def ensureFresh (cfg : EgressConfig) (provider : Provider) (account : St
       return .ok updated
   | _ => return .ok cred
 
+/-- GitHub rejects requests without a nonblank User-Agent. The common native
+    transport also covers relationship preflights and repository REST/GraphQL
+    programs, which do not reuse the original connector's headers. Explicit
+    provider identities (e.g. typednotes-lode for Copilot) are retained. -/
+def hasUserAgent (headers : List (String × String)) : Bool :=
+  headers.any fun (name, value) => name.toLower == "user-agent" && !value.trimAscii.isEmpty
+
+/-- Only the normalizer constructs header lists with the required evidence;
+    buildRequest consumes them immediately before the HTTP header conversion. -/
+structure NativeHeaders where
+  private mk ::
+  values : List (String × String)
+  userAgentPresent : ("user-agent", "typednotes-liaison") ∈ values ∨ hasUserAgent values = true
+
+def NativeHeaders.ofList (headers : List (String × String)) : NativeHeaders :=
+  if h : hasUserAgent headers = true then ⟨headers, Or.inr h⟩ else
+    ⟨("user-agent", "typednotes-liaison") :: headers.filter (fun header => header.1.toLower != "user-agent"),
+      Or.inl (by simp)⟩
+
 /-- Build the outbound request: the caller's method, the checked target, the
     credential's static headers, the caller's headers, the credential's
     authentication, and the body. `none` only if an S3 target cannot be
@@ -117,7 +136,7 @@ private def buildRequest (cred : Credential) (call : ProviderCall) (target : Tar
       isSecure := target.isSecure }
   let plain := cred.headers ++ call.headers
   let toHeaders (hs : List (String × String)) : RequestHeaders :=
-    hs.map (fun (n, v) => (Data.CI.mk' n, v))
+    (NativeHeaders.ofList hs).values.map (fun (n, v) => (Data.CI.mk' n, v))
   match staticAuthHeaders cred.auth with
   | some auth =>
     return some { base with headers := toHeaders (plain ++ auth) }

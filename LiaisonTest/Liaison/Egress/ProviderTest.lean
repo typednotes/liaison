@@ -52,4 +52,19 @@ example : {r : Request} → EgressConfig → ConnectorCall →
 -- S3 is signed per request, not a static header.
 #guard staticAuthHeaders (.s3 "fr-par" "k" "s") == none
 
+-- Presence is carried in the value consumed by the actual HTTP builder.
+example (headers : List (String × String)) :
+    ("user-agent", "typednotes-liaison") ∈ (NativeHeaders.ofList headers).values ∨
+      hasUserAgent (NativeHeaders.ofList headers).values = true :=
+  (NativeHeaders.ofList headers).userAgentPresent
+
+#guard (NativeHeaders.ofList []).values == [("user-agent", "typednotes-liaison")]
+#guard (NativeHeaders.ofList [("accept", "application/json")]).values ==
+  [("user-agent", "typednotes-liaison"), ("accept", "application/json")]
+#guard (NativeHeaders.ofList [("User-Agent", "typednotes-lode"), ("authorization", "Bearer fixture")]).values ==
+  [("User-Agent", "typednotes-lode"), ("authorization", "Bearer fixture")]
+#guard (NativeHeaders.ofList [("USER-AGENT", " \t"), ("accept", "application/json")]).values ==
+  [("user-agent", "typednotes-liaison"), ("accept", "application/json")]
+#guard (NativeHeaders.ofList [("user-agent", "")]).values == [("user-agent", "typednotes-liaison")]
+
 end LiaisonTests.Liaison.Egress.Provider

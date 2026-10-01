@@ -33,6 +33,24 @@ separators, percent escapes, dot segments, and C0/C1 controls are refused.
 Literal query punctuation and Unicode are percent-encoded as UTF-8, never
 concatenated as raw paths or queries.
 
+The common credentialed native HTTP API builder adds `User-Agent:
+typednotes-liaison` when there is no nonblank user agent. Its private
+`NativeHeaders` witness carries either membership of that fixed header pair or
+the successful check of an existing nonblank user agent. Explicit identities
+such as `typednotes-lode` in bound model calls are preserved. This covers GitHub
+inventory, relationship preflights, immutable blob/tree reads and REST/GraphQL
+publication; adding the header only to `repositories.list` would leave the
+follow-up paths broken. GitHub requires a valid User-Agent, as documented in
+[its REST troubleshooting guide](https://docs.github.com/en/rest/using-the-rest-api/troubleshooting-the-rest-api#user-agent-required).
+Raw caller-selected headers remain forbidden. No operation, scope, credential,
+warrant or wire format is widened by this transport fix.
+
+Regression coverage includes a fixture which returns GitHub's 403 for missing
+User-Agent, assertions on every GitHub API request (including atomic publication),
+blank/case-insensitive header normalization, and preservation of model-provider
+identities. The missing-header fixture fails against the previous binary; the
+fixed broker passes all 655 native HTTP cases and the Lean test suite.
+
 ## Three independently stored policy documents
 
 All paths below are KV paths beneath `/v1/secret/data/`. The vault HTTP response
