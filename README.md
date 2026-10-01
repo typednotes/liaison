@@ -34,8 +34,8 @@ It implements the service described in
 [`docs/services/broker.md`](https://github.com/typednotes/typednotes/blob/main/docs/services/broker.md) and [`docs/services/ledger.md`](https://github.com/typednotes/typednotes/blob/main/docs/services/ledger.md), and is built on
 [`linen`](https://github.com/typednotes/linen/tree/main).
 
-The current patch release is **Liaison 0.6.1**: the
-[GitHub User-Agent fix](https://github.com/typednotes/liaison/blob/main/docs/release-0.6.1.md).
+The current patch release is **Liaison 0.6.2**: the
+[GitHub User-Agent fix and combined-push CI waiting](https://github.com/typednotes/liaison/blob/main/docs/release-0.6.2.md).
 It retains the coordinated **Liaison 0.6.0 / Linen 1.10.0** contract, verified with
 Lode/Lun 0.3.0 and Typednotes 0.6.0. Release versions, dependency pins and tags are
 managed together by the release owner.
@@ -367,12 +367,13 @@ without advancing `latest` or a shortened version alias. Main pushes publish no 
 
 [`lean_action_ci.yml`](https://github.com/typednotes/liaison/blob/main/.github/workflows/lean_action_ci.yml)
 runs on pushes to `main`, pull requests targeting `main`, and manual dispatch.
-Push `main` and wait for CI on the release commit before pushing its version
-tag. The publisher's verification job has only `contents: read` and
+The user may push the release commit and its new version tag together:
+`git push origin main vX.Y.Z`. The publisher's verification job has only `contents: read` and
 `actions: read`; [`ci/require-main-ci.sh`](https://github.com/typednotes/liaison/blob/main/ci/require-main-ci.sh)
 requires the actual checkout to match the tag's commit, that commit to be
 reachable from `origin/main`, and its latest **push-to-main** CI run to be
-completed/success. Missing, pending or failed latest runs block publication;
+completed/success. Missing/pending CI is polled for up to two hours; failed or
+cancelled runs, invalid evidence, API errors and wait timeouts block publication.
 PR/manual CI and another commit's result do not qualify. After verification,
 the image job checks out the verified SHA and uses `packages: write` to build
 and publish, without repeating the full CI suite on tags.
