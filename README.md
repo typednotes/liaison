@@ -26,9 +26,9 @@ liaison verifies it, places a **credit hold**, executes (or refuses) a scoped
 **native operation** with the stored credential, and **records the attempt**.
 Native operations can include bounded relationship preflights.
 It implements the service described in
-[`typednotes/typednotes`](https://github.com/typednotes/typednotes)'s
-`docs/services/broker.md` and `docs/services/ledger.md`, and is built on
-[`linen`](https://github.com/typednotes/linen).
+[`typednotes/typednotes`](https://github.com/typednotes/typednotes/tree/main)'s
+[`docs/services/broker.md`](https://github.com/typednotes/typednotes/blob/main/docs/services/broker.md) and [`docs/services/ledger.md`](https://github.com/typednotes/typednotes/blob/main/docs/services/ledger.md), and is built on
+[`linen`](https://github.com/typednotes/linen/tree/main).
 
 The coordinated release line is **Liaison 0.6.0 / Linen 1.10.0**, verified with
 Lode/Lun 0.3.0 and Typednotes 0.6.0. Release versions, dependency pins and tags are
@@ -63,17 +63,17 @@ managed together by the release owner.
   `credit_holds`/`credit_ledger`, settled or released around the call.
 - **Typed credentials** — `bearer`, `header`, Google/Dropbox/GitLab/Microsoft OAuth
   (with refresh and vault write-back), AWS S3 (SigV4) and Azure SAS, fetched
-  from [`typednotes/secrets`](https://github.com/typednotes/secrets).
+  from [`typednotes/secrets`](https://github.com/typednotes/secrets/tree/main).
 - **Request confinement** — native transport derived inside the broker,
   confined to the stored base or a fixed provider-owned origin mapping;
   sensitive/framing headers and SAS parameters remain protected.
 - **Rich connector scopes** — named operations, structured selectors, and
   organization/connection/cell/warrant intersections, with private prepared
-  execution witnesses. See [the native connector contract](docs/connector-permissions.md)
+  execution witnesses. See [the native connector contract](https://github.com/typednotes/liaison/blob/main/docs/connector-permissions.md)
   for coverage, payloads, independent hot policies and revocable run projections.
 - **Native writer protocols** — bounded context, local function tools and replay
   for Messages/Chat/Responses/Gemini/Pi, plus authenticated repository checkout
-  and atomic scoped publication. See [the writer contract](docs/native-writer.md).
+  and atomic scoped publication. See [the writer contract](https://github.com/typednotes/liaison/blob/main/docs/native-writer.md).
 - **Audit** — every attempt, allowed or refused, writes exactly one
   `audit_log` row.
 - **A pure wire module** — `Liaison.Wire` is both the format the server parses
@@ -100,8 +100,8 @@ where three things meet:
 | | Owned by | `liaison`'s part |
 |---|---|---|
 | **Authority** — may this caller do this? | the app, which mints warrants | verifies the HMAC chain against `LIAISON_ROOT_KEY`, then checks every caveat against the exact request |
-| **Spend** — can the org afford it? | [`ledger`](https://github.com/typednotes/ledger), which owns `credit_ledger`/`credit_holds` | places, settles and releases the hold on the request path, directly in Postgres |
-| **Credentials** — how do we authenticate upstream? | [`secrets`](https://github.com/typednotes/secrets), the vault | fetches, refreshes and writes back the credential; the caller never sees it |
+| **Spend** — can the org afford it? | [`ledger`](https://github.com/typednotes/ledger/tree/main), which owns `credit_ledger`/`credit_holds` | places, settles and releases the hold on the request path, directly in Postgres |
+| **Credentials** — how do we authenticate upstream? | [`secrets`](https://github.com/typednotes/secrets/tree/main), the vault | fetches, refreshes and writes back the credential; the caller never sees it |
 
 ### The division of labour with `ledger`
 
@@ -112,7 +112,7 @@ an API:
 1. **Reserve** — before any outbound call, `liaison` inserts a `held` row in
    `credit_holds` for the request's cost, *only if* `balance − held ≥ cost`
    (one conditional `insert … select … where`, the statement `ledger` defines
-   in `Ledger/Sql/Reserve.lean`). No row, no call: the request is refused
+   in [`Ledger/Sql/Reserve.lean`](https://github.com/typednotes/ledger/blob/main/Ledger/Sql/Reserve.lean)). No row, no call: the request is refused
    with `budget_unavailable`.
 2. **Settle** — on success, in one transaction, the hold becomes `settled`
    and a negative `usage` row is appended to `credit_ledger`.
@@ -136,24 +136,24 @@ checking their correspondence to parsers, HTTP, SQL and actual local Git.
 
 | Guarantee | Held by | Where |
 |---|---|---|
-| No native outbound call without verified, explicitly bound authority | types: private `Authorized r` carries `VerifiedTag w`, `w.permits r`, organization equality and required execution bindings; HTTP expiry uses the broker clock | [`Liaison/Auth.lean`](Liaison/Auth.lean), [`Liaison/Server.lean`](Liaison/Server.lean) |
-| No native outbound call without a reserved credit hold | types: private `Reserved r` is constructed through `withReservation` and consumed by `callConnector` and its credentialed native programs; SQL availability is a trusted runtime condition | [`Liaison/Budget.lean`](Liaison/Budget.lean), [`Liaison/Egress/Provider.lean`](Liaison/Egress/Provider.lean) |
-| Resource and byte authority is the four-ceiling intersection | types/proofs: private `Prepared`, `AuthorizedResource`, recursive attenuation and secondary-selector evidence; `Resolved` retains ordinary-adapter origin/method/account/body checks | [`Liaison/Egress/Connector.lean`](Liaison/Egress/Connector.lean), [`Provider.lean`](Liaison/Egress/Provider.lean) |
-| Local function replay and publication cannot substitute unvalidated selectors | types/proofs: `Prepared.function_allowed`, matched replay validation and payload-indexed private `AuthorizedPlan` consumed by publication | [`Liaison/Egress/Inference.lean`](Liaison/Egress/Inference.lean), [`Repository.lean`](Liaison/Egress/Repository.lean) |
-| Settlement does not exceed the reservation | private `BoundedUsage` carries `actual ≤ r.cost` into `settleReserved` | [`Liaison/Budget.lean`](Liaison/Budget.lean) |
-| Attenuating a warrant can only narrow it, never widen it | theorem `Warrant.attenuate_monotone` | [`Liaison/Warrant/Core.lean`](Liaison/Warrant/Core.lean) |
-| A warrant cannot be forged, have its caveats altered, or be moved to another org without the root key | HMAC-SHA256 chain over every caveat; `orgId` folded into the first link (`s₀ = HMAC(key, id ⧺ orgId)`); tag, spliced-caveat and org-swap tampering pinned in `TagTest` | [`Liaison/Warrant/Tag.lean`](Liaison/Warrant/Tag.lean) |
-| The root key comes from the environment, never from code | types: `RootKey` has a private constructor; the only route in is `RootKey.fromEnv` | [`Liaison/Warrant/Tag.lean`](Liaison/Warrant/Tag.lean) |
-| A client's request cannot disagree with its warrant | theorem `Request.ofWarrant_unique` | [`Liaison/Wire.lean`](Liaison/Wire.lean) |
-| A client can decode every refusal code liaison sends | theorem `Denial.ofCode?_code` | [`Liaison/Warrant/Caveat.lean`](Liaison/Warrant/Caveat.lean) |
-| A reservation checks balance and held amounts in one database statement | Postgres: conditional `insert … select … where balance − held ≥ amount`; this alone does not isolate concurrent reservations, see below | [`Liaison/Budget.lean`](Liaison/Budget.lean) |
-| Every hold is settled or released, including when the call throws | code: `withReservation` brackets the callback (`try`/`catch`, release on any exception); a crash is covered by `expires_at` and `ledger`'s sweeper | [`Liaison/Budget.lean`](Liaison/Budget.lean) |
-| A hold leaves `held` at most once, and never comes back | Postgres: every transition is `update … where state = 'held'` | [`Liaison/Budget.lean`](Liaison/Budget.lean) |
-| A settled hold and its usage row commit together or not at all | Postgres: the state change and the `credit_ledger` insert are one transaction | [`Liaison/Budget.lean`](Liaison/Budget.lean) |
-| The broker never serializes credentials into replies or audit | private credential use, no credential `Repr`/`ToString`, no caller-selected transport/auth; fixed Dropbox and GitLab origin mappings are broker-owned. Provider behavior remains trusted | [`Liaison/Egress/Policy.lean`](Liaison/Egress/Policy.lean), [`Credential.lean`](Liaison/Egress/Credential.lean), [`Provider.lean`](Liaison/Egress/Provider.lean) |
-| Every attempt, allowed or refused, writes exactly one audit row, or the request fails loudly | code: one call site per outcome in `handleEgress`; `recordAttempt` throws rather than drop a row | [`Liaison/Server.lean`](Liaison/Server.lean), [`Liaison/Audit.lean`](Liaison/Audit.lean) |
-| liaison issues exactly the SQL `ledger` and the schema expect | test: every statement's text is pinned | [`LiaisonTest/Liaison/BudgetTest.lean`](LiaisonTest/Liaison/BudgetTest.lean), [`AuditTest.lean`](LiaisonTest/Liaison/AuditTest.lean) |
-| The wire format does not drift | test: the literal body is pinned (`golden`), plus `decode ∘ encode` | [`LiaisonTest/Liaison/WireTest.lean`](LiaisonTest/Liaison/WireTest.lean) |
+| No native outbound call without verified, explicitly bound authority | types: private `Authorized r` carries `VerifiedTag w`, `w.permits r`, organization equality and required execution bindings; HTTP expiry uses the broker clock | [`Liaison/Auth.lean`](https://github.com/typednotes/liaison/blob/main/Liaison/Auth.lean), [`Liaison/Server.lean`](https://github.com/typednotes/liaison/blob/main/Liaison/Server.lean) |
+| No native outbound call without a reserved credit hold | types: private `Reserved r` is constructed through `withReservation` and consumed by `callConnector` and its credentialed native programs; SQL availability is a trusted runtime condition | [`Liaison/Budget.lean`](https://github.com/typednotes/liaison/blob/main/Liaison/Budget.lean), [`Liaison/Egress/Provider.lean`](https://github.com/typednotes/liaison/blob/main/Liaison/Egress/Provider.lean) |
+| Resource and byte authority is the four-ceiling intersection | types/proofs: private `Prepared`, `AuthorizedResource`, recursive attenuation and secondary-selector evidence; `Resolved` retains ordinary-adapter origin/method/account/body checks | [`Liaison/Egress/Connector.lean`](https://github.com/typednotes/liaison/blob/main/Liaison/Egress/Connector.lean), [`Provider.lean`](https://github.com/typednotes/liaison/blob/main/Liaison/Egress/Provider.lean) |
+| Local function replay and publication cannot substitute unvalidated selectors | types/proofs: `Prepared.function_allowed`, matched replay validation and payload-indexed private `AuthorizedPlan` consumed by publication | [`Liaison/Egress/Inference.lean`](https://github.com/typednotes/liaison/blob/main/Liaison/Egress/Inference.lean), [`Repository.lean`](https://github.com/typednotes/liaison/blob/main/Liaison/Egress/Repository.lean) |
+| Settlement does not exceed the reservation | private `BoundedUsage` carries `actual ≤ r.cost` into `settleReserved` | [`Liaison/Budget.lean`](https://github.com/typednotes/liaison/blob/main/Liaison/Budget.lean) |
+| Attenuating a warrant can only narrow it, never widen it | theorem `Warrant.attenuate_monotone` | [`Liaison/Warrant/Core.lean`](https://github.com/typednotes/liaison/blob/main/Liaison/Warrant/Core.lean) |
+| A warrant cannot be forged, have its caveats altered, or be moved to another org without the root key | HMAC-SHA256 chain over every caveat; `orgId` folded into the first link (`s₀ = HMAC(key, id ⧺ orgId)`); tag, spliced-caveat and org-swap tampering pinned in `TagTest` | [`Liaison/Warrant/Tag.lean`](https://github.com/typednotes/liaison/blob/main/Liaison/Warrant/Tag.lean) |
+| The root key comes from the environment, never from code | types: `RootKey` has a private constructor; the only route in is `RootKey.fromEnv` | [`Liaison/Warrant/Tag.lean`](https://github.com/typednotes/liaison/blob/main/Liaison/Warrant/Tag.lean) |
+| A client's request cannot disagree with its warrant | theorem `Request.ofWarrant_unique` | [`Liaison/Wire.lean`](https://github.com/typednotes/liaison/blob/main/Liaison/Wire.lean) |
+| A client can decode every refusal code liaison sends | theorem `Denial.ofCode?_code` | [`Liaison/Warrant/Caveat.lean`](https://github.com/typednotes/liaison/blob/main/Liaison/Warrant/Caveat.lean) |
+| A reservation checks balance and held amounts in one database statement | Postgres: conditional `insert … select … where balance − held ≥ amount`; this alone does not isolate concurrent reservations, see below | [`Liaison/Budget.lean`](https://github.com/typednotes/liaison/blob/main/Liaison/Budget.lean) |
+| Every hold is settled or released, including when the call throws | code: `withReservation` brackets the callback (`try`/`catch`, release on any exception); a crash is covered by `expires_at` and `ledger`'s sweeper | [`Liaison/Budget.lean`](https://github.com/typednotes/liaison/blob/main/Liaison/Budget.lean) |
+| A hold leaves `held` at most once, and never comes back | Postgres: every transition is `update … where state = 'held'` | [`Liaison/Budget.lean`](https://github.com/typednotes/liaison/blob/main/Liaison/Budget.lean) |
+| A settled hold and its usage row commit together or not at all | Postgres: the state change and the `credit_ledger` insert are one transaction | [`Liaison/Budget.lean`](https://github.com/typednotes/liaison/blob/main/Liaison/Budget.lean) |
+| The broker never serializes credentials into replies or audit | private credential use, no credential `Repr`/`ToString`, no caller-selected transport/auth; fixed Dropbox and GitLab origin mappings are broker-owned. Provider behavior remains trusted | [`Liaison/Egress/Policy.lean`](https://github.com/typednotes/liaison/blob/main/Liaison/Egress/Policy.lean), [`Credential.lean`](https://github.com/typednotes/liaison/blob/main/Liaison/Egress/Credential.lean), [`Provider.lean`](https://github.com/typednotes/liaison/blob/main/Liaison/Egress/Provider.lean) |
+| Every attempt, allowed or refused, writes exactly one audit row, or the request fails loudly | code: one call site per outcome in `handleEgress`; `recordAttempt` throws rather than drop a row | [`Liaison/Server.lean`](https://github.com/typednotes/liaison/blob/main/Liaison/Server.lean), [`Liaison/Audit.lean`](https://github.com/typednotes/liaison/blob/main/Liaison/Audit.lean) |
+| liaison issues exactly the SQL `ledger` and the schema expect | test: every statement's text is pinned | [`LiaisonTest/Liaison/BudgetTest.lean`](https://github.com/typednotes/liaison/blob/main/LiaisonTest/Liaison/BudgetTest.lean), [`AuditTest.lean`](https://github.com/typednotes/liaison/blob/main/LiaisonTest/Liaison/AuditTest.lean) |
+| The wire format does not drift | test: the literal body is pinned (`golden`), plus `decode ∘ encode` | [`LiaisonTest/Liaison/WireTest.lean`](https://github.com/typednotes/liaison/blob/main/LiaisonTest/Liaison/WireTest.lean) |
 
 > **⚠ Known gap — the reserve race** (shared with `ledger`). A single
 > statement is atomic but not isolated from a concurrent one: under
@@ -190,7 +190,7 @@ The following limits remain explicit:
   disposable vault/upstream fixtures, including native SigV4/SAS. Paid provider
   conformance and live OAuth refresh are not tested.
 
-The full list of named gaps is in [`AGENTS.md`](AGENTS.md).
+The full list of named gaps is in [`AGENTS.md`](https://github.com/typednotes/liaison/blob/main/AGENTS.md).
 
 ## How a call flows
 
@@ -216,11 +216,11 @@ caller ◀── 200 {status, headers, body} or {error} ─┘
 lake build            # the Liaison library and the `liaison` executable
 ```
 
-Requires the Lean toolchain in [`lean-toolchain`](lean-toolchain) (via
+Requires the Lean toolchain in [`lean-toolchain`](https://github.com/typednotes/liaison/blob/main/lean-toolchain) (via
 [elan](https://github.com/leanprover/elan)), plus `libpq`, `pkg-config` and
 OpenSSL/zlib headers for `linen`'s native code (`brew install libpq pkg-config
 openssl` plus the macOS Command Line Tools SDK; on Debian/Ubuntu, see the
-`apt-get` line in [`Dockerfile`](Dockerfile)).
+`apt-get` line in [`Dockerfile`](https://github.com/typednotes/liaison/blob/main/Dockerfile)).
 
 ### Test
 
@@ -260,9 +260,9 @@ LIAISON_ROOT_KEY=... DATABASE_URL=... SECRETS_HOST=... \
 
 - `GET /_health` → `200 ok` (liveness only).
 - `POST /v0/egress` — the one egress chokepoint. The wire format is
-  [`Liaison/Wire.lean`](Liaison/Wire.lean), which Lean clients import (see
+  [`Liaison/Wire.lean`](https://github.com/typednotes/liaison/blob/main/Liaison/Wire.lean), which Lean clients import (see
   [Lean clients](#lean-clients)); the cross-service contract is
-  `typednotes/typednotes`'s `docs/connections.md` §5. The `call` object:
+  `typednotes/typednotes`'s [`docs/connections.md`](https://github.com/typednotes/typednotes/blob/main/docs/connections.md) §5. The `call` object:
 
 ```jsonc
 "call": {
@@ -275,7 +275,7 @@ LIAISON_ROOT_KEY=... DATABASE_URL=... SECRETS_HOST=... \
 ```
 
 The independent organization and run policies in the
-[native connector contract](docs/connector-permissions.md) are required.
+[native connector contract](https://github.com/typednotes/liaison/blob/main/docs/connector-permissions.md) are required.
 Legacy `kind: provider` calls decode for compatibility but are denied.
 
 On success the response is `200` with `{"status", "headers", "body": <hex>}`
@@ -343,7 +343,7 @@ every call):
 
 ## Database schema
 
-`liaison` owns one table, `audit_log` ([`sql/0001_audit_log.sql`](sql/0001_audit_log.sql)),
+`liaison` owns one table, `audit_log` ([`sql/0001_audit_log.sql`](https://github.com/typednotes/liaison/blob/main/sql/0001_audit_log.sql)),
 and writes `ledger`'s `credit_holds`/`credit_ledger`. It never migrates at
 startup: in production `typednotes-infra` reads `sql/*.sql` at the release tag
 and applies it as a declared migration history before the container rolls out
@@ -353,8 +353,23 @@ that order.
 
 ## Docker
 
-Images are published to `ghcr.io/typednotes/liaison` — `edge` from `main`,
-and `latest`, `X.Y.Z` and `X.Y` from release tags.
+Images are published to `ghcr.io/typednotes/liaison` only on version tags by
+[`docker-publish.yml`](https://github.com/typednotes/liaison/blob/main/.github/workflows/docker-publish.yml).
+Stable `vX.Y.Z` tags publish `X.Y.Z`, `X.Y` and automatic `latest` through
+Docker metadata's semver rules. Prereleases publish their full version only,
+without advancing `latest` or a shortened version alias. Main pushes publish no image.
+
+[`lean_action_ci.yml`](https://github.com/typednotes/liaison/blob/main/.github/workflows/lean_action_ci.yml)
+runs on pushes to `main`, pull requests targeting `main`, and manual dispatch.
+Push `main` and wait for CI on the release commit before pushing its version
+tag. The publisher's verification job has only `contents: read` and
+`actions: read`; [`ci/require-main-ci.sh`](https://github.com/typednotes/liaison/blob/main/ci/require-main-ci.sh)
+requires the actual checkout to match the tag's commit, that commit to be
+reachable from `origin/main`, and its latest **push-to-main** CI run to be
+completed/success. Missing, pending or failed latest runs block publication;
+PR/manual CI and another commit's result do not qualify. After verification,
+the image job checks out the verified SHA and uses `packages: write` to build
+and publish, without repeating the full CI suite on tags.
 
 ```sh
 docker run --rm -p 8080:8080 \
@@ -381,9 +396,9 @@ runtime cases**, including app-to-writer-to-broker-to-runtime handoffs.
 Rate limiting, circuit breaking, OpenTelemetry, human-in-the-loop policy, a
 per-token blacklist and usage-based billing remain outside this release. The
 deprecated `kind: inference` entry is a refusal; native model routing is
-implemented through `kind: connector`. See [`AGENTS.md`](AGENTS.md) and the
+implemented through `kind: connector`. See [`AGENTS.md`](https://github.com/typednotes/liaison/blob/main/AGENTS.md) and the
 contracts for the remaining trusted boundaries and supported-shape restrictions.
 
 ## License
 
-Licensed under the [Apache License, Version 2.0](LICENSE).
+Licensed under the [Apache License, Version 2.0](https://github.com/typednotes/liaison/blob/main/LICENSE).
