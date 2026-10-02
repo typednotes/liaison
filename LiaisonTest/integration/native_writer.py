@@ -138,7 +138,7 @@ class Repository:
             contents = git(self.repo, "show", query["ref"][0] + ":" + file).stdout
             handler.reply(200, {"encoding": "base64", "content": base64.b64encode(contents).decode()})
         elif suffix == "" and self.provider == "github":
-            handler.reply(200, {"node_id": "fixture-repository", "full_name": "owner/repo"})
+            handler.reply(200, {"node_id": "fixture-repository", "full_name": "owner/repo", "html_url":"https://github.com/owner/repo", "default_branch":"main"})
         elif suffix == "/git/trees" and handler.command == "POST":
             request = json.loads(body)
             files = {item["path"]: (item["mode"], None if item.get("sha", "not-null") is None else item["content"].encode()) for item in request["tree"]}

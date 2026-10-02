@@ -88,6 +88,14 @@ class Mock(http.server.BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         if state.get("raw") is not None:
             self.reply_bytes(200, state["raw"].encode())
+        elif parsed.path == "/base/user/repos":
+            self.reply(200, [{"full_name":"owner/repo","html_url":"https://github.com/owner/repo","default_branch":"main","private":True}])
+        elif parsed.path == "/base/projects":
+            self.reply(200, [{"path_with_namespace":"owner/repo","web_url":"https://gitlab.com/owner/repo","default_branch":"main","visibility":"private"}])
+        elif parsed.path == "/base/repos/owner/repo":
+            self.reply(200, {"full_name":state.get("repo_identity","owner/repo"),"html_url":"https://github.com/owner/repo","default_branch":"main"})
+        elif urllib.parse.unquote(parsed.path) == "/base/projects/owner/repo":
+            self.reply(200, {"path_with_namespace":state.get("repo_identity","owner/repo"),"web_url":"https://gitlab.com/owner/repo","default_branch":"main"})
         elif parsed.path.startswith("/base/gmail/v1/users/me/messages/") and self.command == "GET" and "/attachments/" not in parsed.path:
             self.reply(200, {"id": "m", "labelIds": state.get("labels", ["inbox"])})
         elif parsed.path.startswith("/base/drive/v3/files/") and parsed.query.startswith("fields="):
@@ -396,6 +404,27 @@ def main():
                         assert path == "/base/data_sources/source/query"
                     if provider in ("google-calendar", "microsoft-calendar") and operation in ("events.update", "events.delete", "events.invite"):
                         assert upstream.state["calls"][-1][2]["if-match"] == '"one"'
+
+                # Exercise each supported operation with explicit narrow grants
+                for provider in ("github", "gitlab"):
+                    request, paths = setup(provider, "repositories.list", [], {"page":"2"})
+                    assert check(request)["status"] == 200
+                    query = urllib.parse.parse_qs(urllib.parse.urlsplit(upstream.state["calls"][-1][1]).query)
+                    assert query["page"] == ["2"] and query["per_page"] == ["100"]
+                    for value in ["0", "101", "01", "-1", "1.5", 2]:
+                        request, _ = setup(provider, "repositories.list", [], {"page":value})
+                        check(request, 403, "capability_denied", 0)
+                    request, paths = setup(provider, "repositories.read", ["owner","repo"], {"view":"metadata"})
+                    for path in [paths[0]+"/permissions",paths[1]]:
+                        vault.state["documents"][path]["scopes"] = [{"operation":"repositories.read","root":["owner","repo"],"descendants":False}]
+                    for name in ("cell","warrant"):
+                        vault.state["documents"][paths[2]][name]["scopes"] = [{"operation":"repositories.read","root":["owner","repo"],"descendants":False}]
+                    assert check(request)["status"] == 200
+                    upstream.state["repo_identity"] = "other/repo"
+                    check(request, 403, "resource_denied")
+                    request, _ = setup(provider, "repositories.list", [], {})
+                    upstream.state["raw"] = json.dumps([{}]*101)
+                    check(request, 403, "resource_denied")
 
                 # Exercise each supported operation with explicit narrow grants
                 # at all four ceilings, not just account-wide test defaults.

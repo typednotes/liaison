@@ -8,6 +8,16 @@ commits and tags; the contracts and local handoffs are verified together.
 The [native writer contract](native-writer.md) additionally specifies current
 conversation/function-tool replay, Radius Pi/SSE and atomic repository modes.
 
+Patch 0.6.3 adds bounded repository browsing and metadata selection for Typednotes
+0.9.0. `repositories.list`, resource `[]`, accepts optional canonical decimal-text
+`page` 1–100; requests/replies are limited to 100 entries. `repositories.read`,
+exact resource `[owner,repo]`, accepts `{"view":"metadata"}`; the returned identity
+must match a private checked `Metadata` witness. GitHub/GitLab transports use
+fixed provider endpoints and deterministic ordering. Operation IDs, structured
+scope semantics, presets and OAuth scope ceilings are unchanged. No arbitrary
+URL, organization-directory access or broader authority is introduced. See
+[the patch contract and verification](release-0.6.3.md).
+
 ## HTTP and authority contract
 
 `POST /v0/egress` retains its warrant/request envelope. Its native call is:

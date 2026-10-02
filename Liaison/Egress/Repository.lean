@@ -27,6 +27,56 @@ def apiPath (provider : String) (resource : List String) : String :=
 
 def view (payload : Json) : Option String := (payload.getObjValAs? String "view").toOption
 
+/-- Inventory pagination cannot select a URL, owner or larger provider page. -/
+structure InventoryPage where
+  private mk ::
+  value : Nat
+  positive : 1 ≤ value
+  bounded : value ≤ 100
+
+def InventoryPage.parse (payload : Json) : Except String InventoryPage := do
+  Inference.fieldsOnly payload ["page"]
+  let value ← match payload.getObjVal? "page" with
+    | .error _ => pure 1
+    | .ok raw => do
+      let text ← raw.getStr?
+      let some number := text.toNat? | throw "repository page must be decimal text"
+      unless text == toString number do throw "repository page must be canonical decimal text"
+      pure number
+  if hp : 1 ≤ value then
+    if hb : value ≤ 100 then return ⟨value, hp, hb⟩
+    else throw "repository page exceeds 100"
+  else throw "repository page must be positive"
+
+structure Inventory where
+  private mk ::
+  entries : Array Json
+  bounded : entries.size ≤ 100
+
+def Inventory.check (value : Json) : Except String Inventory := do
+  let entries ← value.getArr?
+  if h : entries.size ≤ 100 then return ⟨entries, h⟩
+  else throw "repository inventory exceeds 100 entries per page"
+
+def metadataMatches (provider : String) (resource : List String) (json : Json) : Bool :=
+  resource.length == 2 && Wire.validResource resource &&
+    match json.getObjValAs? String (if provider == "github" then "full_name" else "path_with_namespace") with
+    | .error _ => false
+    | .ok name => if provider == "github" then name.toLower == ("/".intercalate resource).toLower
+        else name == "/".intercalate resource
+
+/-- A repository metadata reply must identify the authorized selector before
+    the application can adopt it as a project target. Remote API honesty is
+    still a trusted boundary; a mismatched response is a structured refusal. -/
+structure Metadata (provider : String) (resource : List String) where
+  private mk ::
+  value : Json
+  identity : metadataMatches provider resource value = true
+
+def Metadata.check (provider : String) (resource : List String) (value : Json) : Except String (Metadata provider resource) :=
+  if h : metadataMatches provider resource value = true then .ok ⟨value, h⟩
+  else .error "repository metadata does not match its authorized selector"
+
 structure Change where
   resource : List String
   contents : Option String

@@ -670,6 +670,10 @@ def request (provider base : String) (call : Wire.ConnectorCall) : Except String
         if call.operation == "repositories.delete" then unless plan.changes.all (·.delete) do throw "delete operation cannot write files"
         method := "POST"; path := repo ++ (if provider == "github" then "/git/commits" else "/repository/commits")
         body := some payload.compress
+      else if view == "metadata" then
+        unless call.operation == "repositories.read" && call.resource.length == 2 do throw "repository metadata requires exactly owner/repository"
+        fieldsOnly payload ["view"]
+        path := repo
       else
         unless call.operation == "repositories.read" && call.resource.length == 2 do throw "repository view requires exactly owner/repository"
         fieldsOnly payload (if view == "ancestry" then ["view", "ref", "branch"] else ["view", "ref"])
@@ -688,9 +692,10 @@ def request (provider base : String) (call : Wire.ConnectorCall) : Except String
         else throw "unsupported repository view"
     else match call.operation with
     | "repositories.list" =>
-      fieldsOnly payload []
+      let page ← Repository.InventoryPage.parse payload
       unless call.resource.isEmpty do throw "repository inventory requires the account resource"
-      path := if provider == "github" then "/user/repos" else "/projects?membership=true"
+      path := if provider == "github" then s!"/user/repos?per_page=100&page={page.value}&sort=full_name&direction=asc"
+        else s!"/projects?membership=true&per_page=100&page={page.value}&order_by=path&sort=asc"
     | _ =>
       unless call.resource.length ≥ 2 do throw "repository requires owner and repository components"
       let repo := if provider == "github" then "/repos/" ++ encodeComponent call.resource[0]! ++ "/" ++ encodeComponent call.resource[1]!

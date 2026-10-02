@@ -167,4 +167,18 @@ example (prepared : Prepared mailAuthority "messages.update") :
     ∀ destination ∈ secondaryResources "gmail" "messages.update" prepared.resource.resource,
       mailAuthority.permits "messages.update" destination = true := prepared.secondaryBound
 
+example (page : Egress.Repository.InventoryPage) : 1 ≤ page.value ∧ page.value ≤ 100 := ⟨page.positive, page.bounded⟩
+example (metadata : Egress.Repository.Metadata "github" ["owner", "repo"]) :
+    Egress.Repository.metadataMatches "github" ["owner", "repo"] metadata.value = true := metadata.identity
+#guard ((request "github" "https://api.github.com" (call "repositories.list" [] "{\"page\":\"2\"}")).toOption.map (·.url)) ==
+  some "https://api.github.com/user/repos?per_page=100&page=2&sort=full_name&direction=asc"
+#guard ["0", "101", "01", "-1", "1.5"].all fun page => (request "github" "https://api.github.com" (call "repositories.list" [] (Lean.Json.mkObj [("page", .str page)]).compress)).isError
+#guard (request "github" "https://api.github.com" (call "repositories.list" [] "{\"page\":2}")).isError
+#guard (request "github" "https://api.github.com" (call "repositories.list" [] "{\"url\":\"https://evil.example\"}")).isError
+#guard ((request "github" "https://api.github.com" (call "repositories.read" ["owner", "repo"] "{\"view\":\"metadata\"}")).toOption.map (·.url)) == some "https://api.github.com/repos/owner/repo"
+#guard (Egress.Repository.Metadata.check "github" ["owner", "repo"] (Lean.Json.mkObj [("full_name", .str "Owner/Repo")])).isOk
+#guard (Egress.Repository.Metadata.check "github" ["owner", "repo"] (Lean.Json.mkObj [("full_name", .str "other/repo")])).isError
+#guard (Egress.Repository.Inventory.check (Lean.Json.arr (Array.replicate 100 Lean.Json.null))).isOk
+#guard (Egress.Repository.Inventory.check (Lean.Json.arr (Array.replicate 101 Lean.Json.null))).isError
+
 end ConnectorAdapterTests

@@ -444,7 +444,12 @@ private def repositoryCall {r : Liaison.Request} {authority : Control.Monad.Effe
       if response.status == 200 then
         let some text := String.fromUTF8? response.body | return .error .resourceDenied
         let .ok json := Connector.parseJson text | return .error .resourceDenied
-        if view == "branch" then
+        if view == "metadata" then
+          let .ok metadata := Repository.Metadata.check provider resource json | return .error .resourceDenied
+          let answer := jsonResponse metadata.value
+          unless answer.body.size ≤ authority.maxResponseBytes do return .error .capabilityDenied
+          return .ok (answer, r.cost)
+        else if view == "branch" then
           let .ok revision := json.getObjVal? "commit" >>= fun value => value.getObjValAs? String (if provider == "github" then "sha" else "id") | return .error .resourceDenied
           unless Repository.commit revision && (json.getObjValAs? String "name").toOption == (payload.getObjValAs? String "ref").toOption do return .error .resourceDenied
         else if view == "ancestry" then
@@ -680,6 +685,12 @@ private def sendConnector {r : Liaison.Request} {authority : Control.Monad.Effec
   | .error denial => return .error denial
   | .ok (response, cost) =>
     if response.body.size > authority.maxResponseBytes then return .error .capabilityDenied
+    if ["github", "gitlab"].contains authority.cell.provider && operation == "repositories.list" && response.status == 200 then
+      let some text := String.fromUTF8? response.body | return .error .resourceDenied
+      let .ok inventory := Connector.parseJson text >>= Repository.Inventory.check | return .error .resourceDenied
+      let answer := jsonResponse (Lean.Json.arr inventory.entries)
+      unless answer.body.size ≤ authority.maxResponseBytes do return .error .capabilityDenied
+      return .ok (answer, cost)
     if authority.cell.provider == "radius" && operation == "inference.generate" && response.status == 200 then
       let some text := String.fromUTF8? response.body | return .error .resourceDenied
       let .ok stream := Inference.checkSse text ((prepared.conversation.map (·.allowedTools)).getD []) | return .error .resourceDenied

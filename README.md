@@ -34,8 +34,8 @@ It implements the service described in
 [`docs/services/broker.md`](https://github.com/typednotes/typednotes/blob/main/docs/services/broker.md) and [`docs/services/ledger.md`](https://github.com/typednotes/typednotes/blob/main/docs/services/ledger.md), and is built on
 [`linen`](https://github.com/typednotes/linen/tree/main).
 
-The current patch release is **Liaison 0.6.2**: the
-[GitHub User-Agent fix and combined-push CI waiting](https://github.com/typednotes/liaison/blob/main/docs/release-0.6.2.md).
+The current patch release is **Liaison 0.6.3**: the
+[bounded repository browsing and verified selection](https://github.com/typednotes/liaison/blob/main/docs/release-0.6.3.md).
 It retains the coordinated **Liaison 0.6.0 / Linen 1.10.0** contract, verified with
 Lode/Lun 0.3.0 and Typednotes 0.6.0. Release versions, dependency pins and tags are
 managed together by the release owner.

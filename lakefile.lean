@@ -91,7 +91,7 @@ run_cmd do
 require linen from git "https://github.com/typednotes/linen" @ "v1.10.0"
 
 package liaison where
-  version := v!"0.6.2"
+  version := v!"0.6.3"
   testDriver := "LiaisonTest"
 
 @[default_target]
