@@ -9,6 +9,7 @@ import LiaisonTest.Liaison.ClockTest
 import LiaisonTest.Liaison.Egress.CredentialTest
 import LiaisonTest.Liaison.Egress.PolicyTest
 import LiaisonTest.Liaison.Egress.ConnectorTest
+import LiaisonTest.Liaison.Egress.PairedTest
 import LiaisonTest.Liaison.Egress.InferenceTest
 import LiaisonTest.Liaison.Egress.RepositoryTest
 import LiaisonTest.Liaison.Egress.GitPackTest

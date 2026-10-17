@@ -68,7 +68,7 @@ def examples (provider : String) : List Liaison.Wire.ConnectorCall :=
   else if provider == "slack" then
     [call "channels.list" [], call "messages.read" ["C123"], call "messages.send" ["C123"] "{\"text\":\"hello\"}",
      call "messages.update" ["C123", "123.456"] "{\"text\":\"hello\"}", call "messages.delete" ["C123", "123.456"]]
-  else if ["signal", "whatsapp"].contains provider then [call "messages.send" ["number", "+1234"] "{\"text\":\"hello\"}"]
+  else if ["signal", "whatsapp"].contains provider then [call "messages.read" ["number"], call "messages.send" ["number", "+1234"] "{\"text\":\"hello\"}"]
   else if ["github", "gitlab"].contains provider then
     [call "repositories.list" [], call "repositories.read" ["owner", "repo", "src", "file"] "{\"ref\":\"main\"}",
      call "repositories.write" ["owner", "repo", "src", "file"] "{\"branch\":\"main\",\"message\":\"update\",\"contents\":\"hello\"}",
@@ -87,7 +87,8 @@ def providers : List String := ["s3", "azure", "gdrive", "dropbox", "google-cale
 -- Every advertised broker operation has a positive native plan fixture. A new
 -- operation or provider cannot quietly skip this check.
 #guard providers.all (fun provider => (operations provider).all (fun operation =>
-  (examples provider).any (fun c => c.operation == operation && (request provider "https://mock.example/base" c).isOk)))
+  (examples provider).any (fun c => c.operation == operation && (request provider
+    (if ["signal", "whatsapp"].contains provider then "https://paired.typednotes.invalid" else "https://mock.example/base") c).isOk)))
 #guard providers.all (fun provider => (examples provider).all (fun c => (operations provider).contains c.operation))
 
 #guard !(Wire.validResource [".."])

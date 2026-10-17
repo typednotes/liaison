@@ -86,7 +86,7 @@ private def wrapUpstream (r : Wire.Response) : Network.WebApp.Response :=
     than throwing), an exception escaping the hold lifecycle, and success —
     writes exactly one `AuditRow` before responding. -/
 private def handleEgress (rootKey : RootKey) (pool : Pool) (cfg : EgressConfig)
-    (req : Network.WebApp.Request) : IO Network.WebApp.Response := do
+    (req : Network.WebApp.Request) (device : Bool := false) : IO Network.WebApp.Response := do
   let bytes ← Network.WebApp.strictRequestBody req
   match Wire.Body.decode bytes with
   | .error _ =>
@@ -136,8 +136,8 @@ private def handleEgress (rootKey : RootKey) (pool : Pool) (cfg : EgressConfig)
             withReservation pool authorized (r := parsed.request) (fun reserved =>
               match parsed.call with
               | .inference => callInference reserved
-               | .provider call => callProvider cfg call reserved
-               | .connector call => callConnector cfg call reserved)
+              | .provider call => callProvider cfg call reserved
+              | .connector call => if device then Egress.callDevice cfg call reserved else callConnector cfg call reserved)
           catch e =>
             IO.eprintln s!"liaison: hold lifecycle failed: {e}"
             pure (.error .budgetUnavailable)
@@ -155,9 +155,17 @@ def application (rootKey : RootKey) (pool : Pool) (cfg : EgressConfig)
   fun req respond =>
     if req.rawPathInfo == "/v0/egress" && req.requestMethod == .standard .POST then
       Network.WebApp.AppM.respondIO respond (handleEgress rootKey pool cfg req)
+    else if req.rawPathInfo == "/v0/device" && req.requestMethod == .standard .POST then
+      Network.WebApp.AppM.respondIO respond (handleEgress rootKey pool cfg req true)
     else if req.rawPathInfo == "/_health" && req.requestMethod == .standard .GET then
       Network.WebApp.AppM.respond respond
         (Network.WebApp.responseLBS status200 [(hContentType, "text/plain")] "ok")
+    else if req.rawPathInfo == "/_health/paired" && req.requestMethod == .standard .GET then
+      Network.WebApp.AppM.respondIO respond do
+        let signal ← Egress.Paired.available "signal"
+        let whatsapp ← Egress.Paired.available "whatsapp"
+        return Network.WebApp.responseLBS status200 [(hContentType, "application/json")]
+          (Lean.Json.mkObj [("signal", Lean.toJson signal), ("whatsapp", Lean.toJson whatsapp)]).compress
     else
       Network.WebApp.AppM.respond respond (Network.WebApp.responseLBS status404 [] "not found")
 

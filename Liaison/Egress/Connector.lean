@@ -124,7 +124,7 @@ def operations (provider : String) : List String :=
     ["mailboxes.list", "messages.read", "messages.search", "drafts.create", "messages.send", "messages.update", "messages.delete", "attachments.read"]
   else if provider == "notion" then ["pages.read", "databases.query", "pages.create", "pages.update", "pages.delete", "comments.create"]
   else if provider == "slack" then ["channels.list", "messages.read", "messages.send", "messages.update", "messages.delete"]
-  else if ["signal", "whatsapp"].contains provider then ["messages.send"]
+  else if ["signal", "whatsapp"].contains provider then ["messages.read", "messages.send"]
   else if ["github", "gitlab"].contains provider then
     ["repositories.list", "repositories.read", "repositories.write", "repositories.delete", "issues.read", "issues.write", "pull_requests.write"]
   else []
@@ -645,6 +645,20 @@ def request (provider base : String) (call : Wire.ConnectorCall) : Except String
       body := jsonBody (Json.mkObj ([("channel", Json.str call.resource[0]!), ("ts", Json.str call.resource[1]!)] ++
         extra))
     | _ => throw "unsupported Slack operation"
+  else if ["signal", "whatsapp"].contains provider && base == "https://paired.typednotes.invalid" then
+    match call.resource, call.operation with
+    | [sender, recipient], "messages.send" =>
+      fieldsOnly payload ["text"]
+      unless !(← string payload "text").isEmpty && (← string payload "text").length ≤ 4000 do throw "invalid message text"
+      method := "POST"; path := "/send"
+      body := jsonBody (Json.mkObj [("sender", sender), ("peer", recipient), ("text", Json.str (← string payload "text"))])
+    | [sender], "messages.read" | [sender, _], "messages.read" =>
+      fieldsOnly payload ["after"]
+      let after ← if (payload.getObjVal? "after").isOk then string payload "after" else pure "0"
+      unless after.toNat?.any (fun n => toString n == after && n < UInt64.size) do throw "invalid inbox cursor"
+      method := "POST"; path := "/read"
+      body := jsonBody (Json.mkObj [("sender", sender), ("peer", Json.str (call.resource[1]?.getD "")), ("after", after)])
+    | _, _ => throw "paired messaging requires sender and optional direct recipient"
   else if provider == "signal" then
     fieldsOnly payload ["text"]
     match call.resource, call.operation with

@@ -91,8 +91,18 @@ run_cmd do
 require linen from git "https://github.com/typednotes/linen" @ "v1.10.0"
 
 package liaison where
-  version := v!"0.6.3"
+  version := v!"0.7.0"
   testDriver := "LiaisonTest"
+
+target paired.o pkg : FilePath := do
+  let srcJob ← inputTextFile <| pkg.dir / "ffi" / "paired.c"
+  buildO (pkg.buildDir / "ffi" / "paired.o") srcJob
+    #["-I", (← getLeanIncludeDir).toString] (traceArgs := #["-O2", "-fPIC"])
+    (extraDepTrace := getLeanTrace)
+
+extern_lib pairedffi pkg := do
+  let obj ← paired.o.fetch
+  buildStaticLib (pkg.staticLibDir / nameToStaticLib "pairedffi") #[obj]
 
 @[default_target]
 lean_lib Liaison where

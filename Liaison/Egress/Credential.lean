@@ -95,6 +95,8 @@ inductive CredentialAuth
   /-- An Azure Blob Storage shared access signature, appended to the query
       of every call. -/
   | azureSas (sas : String)
+  /-- Broker-owned linked-device store encryption key; never an HTTP token. -/
+  | pairedDevice (key : String)
 
 /-- A parsed credential. `raw` is the vault's `data` object exactly as read,
     kept so an OAuth refresh can write back the same object with only the
@@ -117,6 +119,7 @@ def CredentialAuth.kindName : CredentialAuth → String
   | .oauth issuer _ _ _ => issuer.kindName
   | .s3 _ _ _ => "s3"
   | .azureSas _ => "azure_sas"
+  | .pairedDevice _ => "paired_device"
 
 /-- See `CredentialAuth.kindName`. -/
 def Credential.kindName (c : Credential) : String := c.auth.kindName
@@ -182,6 +185,10 @@ def parseAuth (kind : String) (data : Value) : Option CredentialAuth :=
     | "azure_sas" => do
       let sas ← str data "sas"
       if validSas sas then some (CredentialAuth.azureSas sas) else none
+    | "paired_device" => do
+      let key ← str data "key"
+      if key.length == 64 && key.toList.all (fun c => Char.isDigit c || ['a', 'b', 'c', 'd', 'e', 'f'].contains c) then
+        some (CredentialAuth.pairedDevice key) else none
     | _ => none
 
 /-- Parse the vault's `data` object (`connections.md` §3.3). `none` for an
@@ -193,7 +200,7 @@ def Credential.parse (data : Value) : Option Credential := do
   let baseUrl := stripTrailingSlashes base
   let headers ← parseStaticHeaders data
   let auth ← parseAuth kind data
-  if validBaseUrl baseUrl then
+  if validBaseUrl baseUrl && (match auth with | .pairedDevice _ => baseUrl == "https://paired.typednotes.invalid" && headers.isEmpty | _ => true) then
     some { baseUrl, headers, auth, raw := data }
   else
     none
@@ -210,6 +217,7 @@ def Credential.setHeaderNames (c : Credential) : List String :=
     | .oauth _ _ _ _ => ["authorization"]
     | .s3 _ _ _ => ["authorization", "host", "x-amz-date", "x-amz-content-sha256"]
     | .azureSas _ => []
+    | .pairedDevice _ => []
   authNames ++ c.headers.map (·.1)
 
 /-- Replace (or append) one field of a JSON object. -/

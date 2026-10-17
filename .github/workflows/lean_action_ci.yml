@@ -27,6 +27,18 @@ jobs:
         with:
           test: false
       - run: LIAISON_ROOT_KEY=$(openssl rand -hex 32) lake test
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.1
+      - name: Native linked-device clients and encrypted storage regressions
+        run: |
+          sudo apt-get install -y libssl-dev protobuf-compiler
+          LIAISON_TEST_TEMP="$RUNNER_TEMP" cargo test --locked --manifest-path native/paired/Cargo.toml
+          cargo build --locked --manifest-path native/signal/Cargo.toml
+          cargo build --locked --manifest-path native/whatsapp/Cargo.toml
+          python3 native/check_libraries.py --temp-root "$RUNNER_TEMP" \
+            --signal native/signal/target/debug/libliaison_signal.so \
+            --whatsapp native/whatsapp/target/debug/libliaison_whatsapp.so
 
   native-contracts:
     runs-on: ubuntu-24.04
@@ -71,4 +83,9 @@ jobs:
         working-directory: liaison
         run: |
           export PATH="$(pg_config --bindir):$PATH"
-          python3 LiaisonTest/integration/connectors.py --temp-root "$RUNNER_TEMP"
+          rustup toolchain install 1.97.1 --profile minimal
+          cargo +1.97.1 build --locked --manifest-path native/fixture/Cargo.toml --target-dir native/fixture/target/signal
+          cargo +1.97.1 build --locked --manifest-path native/fixture/Cargo.toml --features whatsapp --target-dir native/fixture/target/whatsapp
+          python3 LiaisonTest/integration/connectors.py --temp-root "$RUNNER_TEMP" \
+            --paired-signal-library native/fixture/target/signal/debug/libliaison_paired_fixture.so \
+            --paired-whatsapp-library native/fixture/target/whatsapp/debug/libliaison_paired_fixture.so

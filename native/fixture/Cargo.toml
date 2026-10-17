@@ -1,0 +1,19 @@
+[package]
+name = "liaison-paired-fixture"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+whatsapp = []
+
+[dependencies]
+liaison-paired = { path = "../paired" }
+anyhow = "1"
+serde_json = "1"
+tokio = { version = "1", features = ["rt", "time"] }
+
+[workspace]

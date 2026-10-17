@@ -192,9 +192,15 @@ it to positive native-plan fixtures and the sibling Rust catalog.
 * **Slack**: `channels.list`, `messages.read/send/update/delete`. Inventory uses
   `[]`; history/send use `[channel]`; update/delete use `[channel,timestamp]`.
   Message payloads contain text only, never channel or recipient overrides.
-* **Signal / WhatsApp**: `messages.send` only, with `[sender-account,recipient]`
-  and text. Both identities are in the granted selector; the payload cannot
-  replace either. Read/edit/delete/file history are not silently simulated.
+* **Signal / WhatsApp**: native QR-linked credentials additionally support
+  `messages.read`, with `[sender-account]` or `[sender-account,peer]` and optional
+  decimal-string `after`. `messages.send` uses `[sender-account,recipient]` and
+  text. Both identities are in the granted selector; payloads cannot replace
+  either. Read pages disclose only that exact peer when selected. Legacy
+  bridge/Cloud API credentials remain send-only. Edit/delete/media/group effects
+  are unsupported. See [the native Rust adapter contract](../native/README.md)
+  for the private Lean plans, signed owner-bound provisioning, persistent device
+  keys, bounded inboxes, deployment and trusted boundaries.
 * **GitHub / GitLab**: `repositories.list/read/write/delete`, `issues.read/write`,
   `pull_requests.write`. Resources start with `[owner,repo]`; file components or
   a positive issue/PR number follow. Reads specify `ref`; writes specify

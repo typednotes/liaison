@@ -1,0 +1,20 @@
+[package]
+name = "liaison-signal"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+liaison-paired = { path = "../paired" }
+anyhow = "1"
+futures = "0.3"
+serde_json = "1"
+tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
+url = "2"
+presage = { git = "https://github.com/whisperfish/presage", rev = "07815e7e2f649396f2fdd8f44c722688b612c854" }
+presage-store-sqlite = { git = "https://github.com/whisperfish/presage", rev = "07815e7e2f649396f2fdd8f44c722688b612c854" }
+
+[workspace]

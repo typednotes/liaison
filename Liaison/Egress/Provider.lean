@@ -27,6 +27,7 @@ import Liaison.Egress.OAuth
 import Liaison.Egress.S3
 import Liaison.Egress.Connector
 import Liaison.Egress.GitPack
+import Liaison.Egress.Paired
 import Linen.Network.HTTP.Simple
 
 namespace Liaison.Egress
@@ -67,6 +68,7 @@ def staticAuthHeaders : CredentialAuth → Option (List (String × String))
   | .oauth _ access _ _ => some [("Authorization", s!"Bearer {access}")]
   | .azureSas _ => some []
   | .s3 _ _ _ => none
+  | .pairedDevice _ => none
 
 /-- The query the credential appends to every call: an Azure SAS. -/
 def credentialQuery : CredentialAuth → String
@@ -673,6 +675,10 @@ private def sendConnector {r : Liaison.Request} {authority : Control.Monad.Effec
     {operation : String} (cfg : EgressConfig) (cred : Credential)
     (prepared : Connector.Prepared authority operation) (reserved : Reserved r) :
     IO (Except Denial (Wire.Response × Liaison.Credits)) := do
+  if let .pairedDevice key := cred.auth then
+    let .ok plan := Paired.prepare prepared | return .error .capabilityDenied
+    return ← Paired.execute plan key reserved
+  if cred.baseUrl == Paired.base then return .error .credentialUnavailable
   if ["github", "gitlab"].contains authority.cell.provider &&
       ((Connector.parseJson prepared.payload >>= fun payload => pure (Repository.view payload)).toOption.bind id).isSome then
     return ← repositoryCall cfg cred prepared reserved
@@ -753,6 +759,15 @@ def callConnector {r : Liaison.Request} (cfg : EgressConfig) (call : Wire.Connec
     | .error _ => return .error .credentialUnavailable
     | .ok credential => pure credential
   sendConnector cfg credential prepared reserved
+
+/-- Device provisioning is a separate signed application control plane, never a
+    notebook effect. Its signed action binds the owner; its resource binds the UUID. -/
+def callDevice {r : Liaison.Request} (cfg : EgressConfig) (call : Wire.ConnectorCall)
+    (reserved : Reserved r) : IO (Except Denial (Wire.Response × Liaison.Credits)) := do
+  let .ok control := Paired.control reserved call | return .error .capabilityDenied
+  let .ok credential ← fetchCredential cfg.secrets r.provider call.account | return .error .credentialUnavailable
+  let .pairedDevice key := credential.auth | return .error .credentialUnavailable
+  return ← Paired.executeControl control key
 
 /-- **Loud, structured-denial stub.** Inference routing (`broker.md` §8:
     "where does inference routing live") is explicitly out of scope for v0.

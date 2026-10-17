@@ -205,8 +205,8 @@ def check_catalog(path):
         actual.setdefault(provider, set()).add(operation)
     for provider, operations in native_writer.PAIRS.items(): actual[provider].update(operations)
     gaps = {"caldav": {"events.invite"}, "slack": {"files.read"},
-        **{provider: {"channels.list", "messages.read", "messages.update", "messages.delete", "files.read"} for provider in ("signal", "whatsapp")}}
-    extras = {"opencode": {"classification.evaluate"}, **native_writer.PAIRS}
+        **{provider: {"channels.list", "messages.update", "messages.delete", "files.read"} for provider in ("signal", "whatsapp")}}
+    extras = {"opencode": {"classification.evaluate"}, "signal":{"messages.read"}, "whatsapp":{"messages.read"}, **native_writer.PAIRS}
     assert expected.keys() == actual.keys(), (expected.keys() - actual.keys(), actual.keys() - expected.keys())
     for provider in expected:
         assert expected[provider] - actual[provider] == gaps.get(provider, set()) & expected[provider], (provider, expected[provider] - actual[provider])
@@ -253,6 +253,7 @@ def fixtures():
                                   ("messages.update", ["C123", "123.456"], {"text": "hi"}), ("messages.delete", ["C123", "123.456"], {})):
         yield "slack", op, resource, payload
     for provider in ("signal", "whatsapp"):
+        yield provider, "messages.read", ["sender", "alice"], {}
         yield provider, "messages.send", ["number", "+1234"], {"text": "hello"}
     for provider in ("github", "gitlab"):
         yield provider, "repositories.list", [], {}
@@ -278,6 +279,8 @@ def main():
     parser.add_argument("--temp-root", type=Path, required=True)
     parser.add_argument("--catalog", type=Path, default=Path(__file__).resolve().parents[2].parent / "typednotes/packages/api/src/permissions.rs")
     parser.add_argument("--workspace", type=Path, default=Path(__file__).resolve().parent / "client")
+    parser.add_argument("--paired-signal-library", type=Path)
+    parser.add_argument("--paired-whatsapp-library", type=Path)
     options = parser.parse_args()
     assert options.temp_root.is_dir() and options.broker.is_file()
     check_catalog(options.catalog)
@@ -299,6 +302,13 @@ def main():
             sql("create table credit_holds (id uuid primary key default gen_random_uuid(), org_id uuid, run_id uuid, amount bigint, state text, expires_at timestamptz); create table credit_ledger (id uuid default gen_random_uuid(), org_id uuid, run_id uuid, delta bigint, reason text);" + (Path(__file__).resolve().parents[2] / "sql/0001_audit_log.sql").read_text())
             sql(f"insert into credit_ledger (org_id,run_id,delta,reason) values ('{org}','{run_id}',10000,'fixture')")
             env = dict(os.environ, LIAISON_ROOT_KEY=root_key.hex(), DATABASE_URL=database, SECRETS_HOST="127.0.0.1", SECRETS_PORT=str(vault.server_port), SECRETS_INSECURE="1", SECRETS_TOKEN="local-vault-fixture", LIAISON_PORT=str(broker_port))
+            paired_dir = directory / "devices"
+            paired_dir.mkdir(mode=0o700)
+            env["LIAISON_PAIRED_DIR"] = str(paired_dir)
+            if options.paired_signal_library:
+                env["LIAISON_SIGNAL_LIBRARY"] = str(options.paired_signal_library.resolve())
+            if options.paired_whatsapp_library:
+                env["LIAISON_WHATSAPP_LIBRARY"] = str(options.paired_whatsapp_library.resolve())
             for name in list(env):
                 if name.endswith(("_CLIENT_ID", "_CLIENT_SECRET")) or name in ("SECRETS_USERNAME", "SECRETS_PASSWORD"):
                     del env[name]
@@ -373,6 +383,51 @@ def main():
 
                 for provider, operation, resource, payload in fixtures():
                     request, paths = setup(provider, operation, resource, payload)
+                    if provider in ("signal", "whatsapp") and operation == "messages.read":
+                        assert options.paired_signal_library and options.paired_whatsapp_library, "build and pass the offline paired fixture libraries"
+                        vault.state["documents"][paths[0]] = {"kind":"paired_device","base_url":"https://paired.typednotes.invalid","key":"09"*32}
+                        control = copy.deepcopy(request)
+                        control["action"] = control["call"]["operation"] = "device.pair:user"
+                        control["call"]["resource"] = []
+                        for caveat in control["warrant"]["caveats"]:
+                            if caveat["kind"] == "capability": caveat["action"] = control["action"]
+                        resign(control)
+                        endpoint = f"http://127.0.0.1:{broker_port}/v0/device"
+                        status, paired = exchange(endpoint, control)
+                        assert status == 200 and paired["status"] == 200, paired
+                        checks += 1
+                        time.sleep(.3)
+                        reply = check(request, sends=0)
+                        page = json.loads(bytes.fromhex(reply["body"]))
+                        assert [m["peer"] for m in page["messages"]] == ["alice"], page
+                        assert "only bob" not in json.dumps(page)
+                        denied = copy.deepcopy(request)
+                        denied["call"]["resource"] = ["other", "alice"]
+                        reply = check(denied, sends=0)
+                        assert reply["status"] == 502, reply
+                        # All four ceilings independently deny before credential IO.
+                        for document, field in ((paths[0]+"/permissions",None),(paths[1],None),(paths[2],"cell"),(paths[2],"warrant")):
+                            target = vault.state["documents"][document]
+                            if field: target=target[field]
+                            saved=target["scopes"]; target["scopes"]=[]
+                            check(request,403,"resource_denied",sends=0)
+                            target["scopes"]=saved
+                        # A correctly signed control cannot substitute the owner.
+                        bad=copy.deepcopy(control); bad["call"]["account"]="other/connection"
+                        status,reply=exchange(endpoint,bad)
+                        assert status==403 and reply["error"]=="capability_denied",reply
+                        checks += 1
+                        # A cell endpoint cannot use a device-control warrant.
+                        check(control,403,"capability_denied",sends=0)
+                        control["action"]=control["call"]["operation"]="device.unlink:user"
+                        for caveat in control["warrant"]["caveats"]:
+                            if caveat["kind"]=="capability": caveat["action"]=control["action"]
+                        resign(control)
+                        status,reply=exchange(endpoint,control)
+                        assert status==200 and reply["status"]==200,reply
+                        checks += 1
+                        assert not (paired_dir/provider/org/"user"/"connection").exists()
+                        continue
                     reply = check(request)
                     if provider == "github":
                         assert reply["status"] == 200, "GitHub rejected a request without User-Agent"
@@ -433,6 +488,18 @@ def main():
                     if requires_tree:
                         continue  # separately tested recursive-account restriction
                     request, paths = setup(provider, operation, resource, payload)
+                    if provider in ("signal", "whatsapp") and operation == "messages.read":
+                        vault.state["documents"][paths[0]]={"kind":"paired_device","base_url":"https://paired.typednotes.invalid","key":"09"*32}
+                        control=copy.deepcopy(request)
+                        control["action"]=control["call"]["operation"]="device.pair:user"
+                        control["call"]["resource"]=[]
+                        for caveat in control["warrant"]["caveats"]:
+                            if caveat["kind"]=="capability": caveat["action"]=control["action"]
+                        resign(control)
+                        status,reply=exchange(f"http://127.0.0.1:{broker_port}/v0/device",control)
+                        assert status==200 and reply["status"]==200,reply
+                        checks += 1
+                        time.sleep(.3)
                     scopes = [{"operation": operation, "root": resource, "descendants": False}]
                     if provider in ("outlook", "jmap") and operation == "messages.update":
                         scopes.append({"operation": operation, "root": [resource[0], resource[3]], "descendants": False})
