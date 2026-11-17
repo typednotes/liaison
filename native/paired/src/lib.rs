@@ -253,7 +253,7 @@ fn execute<B: Backend>(sessions: &Sessions, request: Request) -> Result<Value> {
                             }
                         }
                     } },
-                    Err(_) => { state.disconnected("Connection failed. Unlink and scan a new QR code"); return Err(anyhow::anyhow!("device connection failed")); },
+                    Err(_) => { state.disconnected("Connection failed. Unlink and scan a new QR code"); Err(anyhow::anyhow!("device connection failed")) },
                 }
             });
             // Drop the LocalSet/runtime (and every protocol task) before the

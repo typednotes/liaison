@@ -15,9 +15,8 @@ impl Backend for WhatsApp {
             .with_backend(SqliteStore::new(path.join("protocol.db").to_str().unwrap()).await?)
             .on_qr_code(move |code, timeout| { let shared = qr.clone(); async move { shared.qr(code, timeout.as_secs()); } })
             .on_connected(move |client| { let shared = connected.clone(); async move {
-                if let Some(jid) = client.pn() {
-                    if shared.connected(jid.user.to_string()).is_err() { shared.disconnected("Device identity changed; unlink first"); client.disconnect().await; }
-                }
+                if let Some(jid) = client.pn()
+                    && shared.connected(jid.user.to_string()).is_err() { shared.disconnected("Device identity changed; unlink first"); client.disconnect().await; }
             } })
             .on_logged_out(move |_| { let shared = logout.clone(); async move { shared.disconnected("Device was unlinked. Scan a new QR code"); } })
             .on_message(move |ctx| { let shared = inbound.clone(); async move {
@@ -27,7 +26,7 @@ impl Backend for WhatsApp {
                 let server = chat.server.to_string();
                 if !["s.whatsapp.net", "lid"].contains(&server.as_str()) { return; }
                 // Preserve the exact direct-chat identity, including LID identities.
-                let peer = if chat.server.to_string() == "s.whatsapp.net" { chat.user.to_string() } else { chat.to_string() };
+                let peer = if chat.server == "s.whatsapp.net" { chat.user.to_string() } else { chat.to_string() };
                 let id = format!("{peer}:{}", ctx.info.id);
                 if shared.push(id, peer, body.to_string(), ctx.info.timestamp.timestamp_millis() as u64).is_err() {
                     shared.disconnected("Could not persist the received message"); ctx.client.disconnect().await;
@@ -44,7 +43,7 @@ impl Backend for WhatsApp {
             format!("{peer}@s.whatsapp.net").parse()?
         } else {
             let jid: Jid = peer.parse()?;
-            ensure!(jid.server.to_string() == "lid" && jid.device == 0, "only direct recipients are supported");
+            ensure!(jid.server == "lid" && jid.device == 0, "only direct recipients are supported");
             jid
         };
         let sent = self.client.send_message(&jid, wa::Message::text(text)).await?;

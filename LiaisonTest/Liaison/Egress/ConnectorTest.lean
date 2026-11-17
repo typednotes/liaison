@@ -4,7 +4,7 @@ open Liaison.Egress.Connector
 open Control.Monad.Effect.Connector
 open Liaison
 
-private def Except.isError (value : Except α β) : Bool := !value.isOk
+private def Except.isError {α β : Type} (value : Except α β) : Bool := !value.isOk
 
 namespace ConnectorAdapterTests
 

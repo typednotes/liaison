@@ -68,7 +68,7 @@ open Data.Json (Value)
 
 -- ── Reading JSON ─────────────────────────────────────────────────────
 
-private def orErr (o : Option α) (msg : String) : Except String α :=
+private def orErr {α : Type} (o : Option α) (msg : String) : Except String α :=
   match o with
   | some v => .ok v
   | none => .error msg
@@ -367,7 +367,7 @@ def Request.ofWarrant (w : Warrant) (now : UInt64) (cost : Credits) : Except Str
   | _, _, none => .error "warrant: no runId caveat"
 
 /-- The first of a kind among caveats that all permit `r` is `r`'s. -/
-private theorem findSome?_of_permits (f : Caveat → Option α) (r : Request) (v : α)
+private theorem findSome?_of_permits {α : Type} (f : Caveat → Option α) (r : Request) (v : α)
     (hf : ∀ c x, f c = some x → c.permits r → x = v) :
     ∀ (l : List Caveat), (∀ c ∈ l, c.permits r) → ∀ x, l.findSome? f = some x → x = v
   | [], _, x, h => by simp at h

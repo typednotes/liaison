@@ -87,6 +87,10 @@ or distributing them. Each dependency closure has its own checked-in lockfile.
 LIAISON_TEST_TEMP=/approved/scratch cargo test --manifest-path native/paired/Cargo.toml
 cargo check --locked --manifest-path native/signal/Cargo.toml
 cargo check --locked --manifest-path native/whatsapp/Cargo.toml
+for crate in paired signal whatsapp fixture; do
+  cargo clippy --locked --manifest-path native/$crate/Cargo.toml --all-targets -- -D warnings
+done
+cargo clippy --locked --manifest-path native/fixture/Cargo.toml --all-targets --features whatsapp -- -D warnings
 LIAISON_ROOT_KEY=<test-key> lake test
 python3 native/check_libraries.py --temp-root /approved/scratch \
   --signal /absolute/path/libliaison_signal.so --whatsapp /absolute/path/libliaison_whatsapp.so

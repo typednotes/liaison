@@ -18,8 +18,8 @@ dependency pins, commits and tags together.
 | Task | Command |
 | --- | --- |
 | Install | Lean toolchain from `lean-toolchain` via [elan](https://github.com/leanprover/elan); `brew install libpq pkg-config openssl` plus the macOS Command Line Tools SDK (macOS), or the `apt-get` line in `Dockerfile` (Debian/Ubuntu); `lake build` fetches the dependencies pinned in `lake-manifest.json` |
-| Type-check | `lake build` (library and `liaison` executable; no root key needed) |
-| Test | `LIAISON_ROOT_KEY=$(openssl rand -hex 32) lake test`; `bash ci/test-require-main-ci.sh`; `cargo test --locked --manifest-path native/paired/Cargo.toml`; integration (Postgres, Rust fixtures): `python3 LiaisonTest/integration/connectors.py --temp-root <dir> …` as in the `native-contracts` job of `.github/workflows/lean_action_ci.yml` |
+| Type-check | `lake build --wfail` (library and `liaison` executable; no root key needed) |
+| Test | `LIAISON_ROOT_KEY=$(openssl rand -hex 32) lake test`; `bash ci/test-require-main-ci.sh`; `cargo test --locked --manifest-path native/paired/Cargo.toml`; `cargo clippy --locked --manifest-path native/<crate>/Cargo.toml --all-targets -- -D warnings` for `paired`, `signal`, `whatsapp` and `fixture` (also `--features whatsapp`); integration (Postgres, Rust fixtures): `python3 LiaisonTest/integration/connectors.py --temp-root <dir> …` as in the `native-contracts` job of `.github/workflows/lean_action_ci.yml` |
 | Build / release | `lake build liaison`; `docker build -t liaison .`; release: a `v*.*.*` tag pushed by the user triggers `.github/workflows/docker-publish.yml` |
 | CLI (applications) | `LIAISON_ROOT_KEY=... DATABASE_URL=... SECRETS_HOST=... lake exe liaison` (no subcommands or `--help`; configured by environment, see `README.md`) |
 
@@ -156,7 +156,7 @@ experiments are logged too.
 ### Types: use the strongest standard checking the language offers, maximally
 
 - Use the standard type-checker of the language/framework in its strictest practical mode, run it in
-  CI, and keep it at zero errors. In this project: Lean 4 (toolchain `leanprover/lean4:v4.34.0`, pinned in `lean-toolchain`), type-checked by `lake build`, with every theorem checked by Lean's kernel. `lakefile.lean` sets no `leanOptions` or `moreLeanArgs`, so `autoImplicit` and `relaxedAutoImplicit` are at Lean's defaults (enabled), and neither the lakefile nor CI (`leanprover/lean-action@v1` without `build-args`) uses `--wfail` or `warningAsError`: warnings, including `declaration uses 'sorry'`, do not fail the build. "No `sorry`" and "no `partial def`" are project conventions (see Project-specific notes), not compiler-enforced settings. The Rust crates under `native/` are built and tested in CI with `cargo build --locked` / `cargo test --locked` (toolchain 1.97.1); `cargo clippy` is not run.
+  CI, and keep it at zero errors. In this project: Lean 4 (toolchain `leanprover/lean4:v4.34.0`, pinned in `lean-toolchain`), type-checked by `lake build`, with every theorem checked by Lean's kernel. `lakefile.lean` turns `autoImplicit` and `relaxedAutoImplicit` off for the package (`leanOptions`), and CI builds with `--wfail` (`leanprover/lean-action@v1` `build-args`): warnings, including `declaration uses 'sorry'`, fail the build. Run `lake build --wfail` locally. "No `partial def`" remains a project convention (see Project-specific notes), not a compiler-enforced setting. The Rust crates under `native/` (`paired`, `signal`, `whatsapp`, `fixture` with and without its `whatsapp` feature) are built and tested in CI with `cargo build --locked` / `cargo test --locked` and linted with `cargo clippy --locked --all-targets -- -D warnings` (toolchain 1.97.1): clippy warnings fail CI.
 - Make illegal states unrepresentable: precise types, enums/sum types over strings and flags, new
   types for identifiers and units, immutable data by default. Avoid `Any`, casts and ignores; when
   one is unavoidable, scope it narrowly and justify it in a comment.

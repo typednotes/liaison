@@ -26,13 +26,18 @@ jobs:
       - uses: leanprover/lean-action@v1
         with:
           test: false
+          build-args: "--wfail"
       - run: LIAISON_ROOT_KEY=$(openssl rand -hex 32) lake test
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.97.1
+          components: clippy
       - name: Native linked-device clients and encrypted storage regressions
         run: |
           sudo apt-get install -y libssl-dev protobuf-compiler
+          cargo clippy --locked --manifest-path native/paired/Cargo.toml --all-targets -- -D warnings
+          cargo clippy --locked --manifest-path native/signal/Cargo.toml --all-targets -- -D warnings
+          cargo clippy --locked --manifest-path native/whatsapp/Cargo.toml --all-targets -- -D warnings
           LIAISON_TEST_TEMP="$RUNNER_TEMP" cargo test --locked --manifest-path native/paired/Cargo.toml
           cargo build --locked --manifest-path native/signal/Cargo.toml
           cargo build --locked --manifest-path native/whatsapp/Cargo.toml
@@ -74,6 +79,7 @@ jobs:
         with:
           lake-package-directory: liaison
           test: false
+          build-args: "--wfail"
       - name: Install disposable PostgreSQL fixture tools
         run: sudo apt-get install -y postgresql
       - name: Build the actual writer SDK fixture
@@ -83,7 +89,9 @@ jobs:
         working-directory: liaison
         run: |
           export PATH="$(pg_config --bindir):$PATH"
-          rustup toolchain install 1.97.1 --profile minimal
+          rustup toolchain install 1.97.1 --profile minimal --component clippy
+          cargo +1.97.1 clippy --locked --manifest-path native/fixture/Cargo.toml --all-targets --target-dir native/fixture/target/signal -- -D warnings
+          cargo +1.97.1 clippy --locked --manifest-path native/fixture/Cargo.toml --all-targets --features whatsapp --target-dir native/fixture/target/whatsapp -- -D warnings
           cargo +1.97.1 build --locked --manifest-path native/fixture/Cargo.toml --target-dir native/fixture/target/signal
           cargo +1.97.1 build --locked --manifest-path native/fixture/Cargo.toml --features whatsapp --target-dir native/fixture/target/whatsapp
           python3 LiaisonTest/integration/connectors.py --temp-root "$RUNNER_TEMP" \
