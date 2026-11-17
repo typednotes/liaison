@@ -34,7 +34,10 @@ It implements the service described in
 [`docs/services/broker.md`](https://github.com/typednotes/typednotes/blob/main/docs/services/broker.md) and [`docs/services/ledger.md`](https://github.com/typednotes/typednotes/blob/main/docs/services/ledger.md), and is built on
 [`linen`](https://github.com/typednotes/linen/tree/main).
 
-The prepared feature release is **Liaison 0.7.0**: native QR-linked Signal and
+The current patch release is **Liaison 0.7.1**, with no user-visible change:
+stricter Lean builds and Clippy on the native crates
+([release notes](https://github.com/typednotes/liaison/blob/main/docs/release-0.7.1.md)).
+It keeps the **Liaison 0.7.0** feature release: native QR-linked Signal and
 WhatsApp messaging, using Rust libraries loaded inside the broker. See the
 [release notes](https://github.com/typednotes/liaison/blob/main/docs/release-0.7.0.md)
 and [native adapter setup](https://github.com/typednotes/liaison/blob/main/native/README.md).

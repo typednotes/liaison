@@ -91,7 +91,7 @@ run_cmd do
 require linen from git "https://github.com/typednotes/linen" @ "v1.10.0"
 
 package liaison where
-  version := v!"0.7.0"
+  version := v!"0.7.1"
   testDriver := "LiaisonTest"
   leanOptions := #[⟨`autoImplicit, false⟩, ⟨`relaxedAutoImplicit, false⟩]
 
