@@ -88,7 +88,7 @@ run_cmd do
     else pkgAbsoluteLibs "zlib"
   mkDef `nativeLinkArgs (pq ++ (if zlib.isEmpty then #["-lz"] else zlib))
 
-require linen from git "https://github.com/typednotes/linen" @ "v1.10.0"
+require linen from git "https://github.com/typednotes/linen" @ "fde31559683b7f6c04f877b4031ee782307b337a"
 
 package liaison where
   version := v!"0.7.1"
