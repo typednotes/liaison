@@ -55,17 +55,17 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: typednotes/linen
-          ref: v1.10.0
+          ref: fde31559683b7f6c04f877b4031ee782307b337a
           path: linen
       - uses: actions/checkout@v7
         with:
           repository: typednotes/lun
-          ref: v0.3.0
+          ref: b98f06bbd809178dbb345b230289b2f4e894666a
           path: lun
       - uses: actions/checkout@v7
         with:
           repository: typednotes/lode
-          ref: v0.3.0
+          ref: 6c6231556e8ada1d03fde11bf0901e895d731b3d
           path: lode
       - uses: actions/checkout@v7
         with:
