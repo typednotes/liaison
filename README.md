@@ -13,8 +13,8 @@
   <a href="https://github.com/typednotes/liaison/actions/workflows/docker-publish.yml"><img src="https://github.com/typednotes/liaison/actions/workflows/docker-publish.yml/badge.svg" alt="Docker publish"></a>
   <a href="https://github.com/typednotes/liaison/pkgs/container/liaison"><img src="https://img.shields.io/badge/ghcr.io-typednotes%2Fliaison-blue?logo=docker" alt="Docker image"></a>
   <a href="https://github.com/typednotes/liaison/tags"><img src="https://img.shields.io/github/v/tag/typednotes/liaison?label=version&sort=semver" alt="Version"></a>
-  <a href="https://lean-lang.org/"><img src="https://img.shields.io/badge/Lean-v4.34.0-blue" alt="Lean v4.34.0"></a>
-  <a href="https://github.com/typednotes/linen"><img src="https://img.shields.io/badge/built%20on-linen%20v1.10.0-c9b896" alt="Built on linen v1.10.0"></a>
+  <a href="https://lean-lang.org/"><img src="https://img.shields.io/badge/Lean-v4.36.0-blue" alt="Lean v4.36.0"></a>
+  <a href="https://github.com/typednotes/linen"><img src="https://img.shields.io/badge/built%20on-linen%20v3.0.0-c9b896" alt="Built on linen v3.0.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License: Apache 2.0"></a>
 </p>
 
@@ -34,16 +34,15 @@ It implements the service described in
 [`docs/services/broker.md`](https://github.com/typednotes/typednotes/blob/main/docs/services/broker.md) and [`docs/services/ledger.md`](https://github.com/typednotes/typednotes/blob/main/docs/services/ledger.md), and is built on
 [`linen`](https://github.com/typednotes/linen/tree/main).
 
-The current patch release is **Liaison 0.7.1**, with no user-visible change:
-stricter Lean builds and Clippy on the native crates
+**Liaison 0.7.2** builds with Linen 3.0.0. See the [changelog](CHANGELOG.md).
+**Liaison 0.7.1** introduced stricter Lean builds and Clippy on the native crates
 ([release notes](https://github.com/typednotes/liaison/blob/main/docs/release-0.7.1.md)).
 It keeps the **Liaison 0.7.0** feature release: native QR-linked Signal and
 WhatsApp messaging, using Rust libraries loaded inside the broker. See the
 [release notes](https://github.com/typednotes/liaison/blob/main/docs/release-0.7.0.md)
 and [native adapter setup](https://github.com/typednotes/liaison/blob/main/native/README.md).
-Existing native operations retain the coordinated **Liaison 0.6.0 / Linen 1.10.0** contract, verified with
-Lode/Lun 0.3.0 and Typednotes 0.6.0. Release versions, dependency pins and tags are
-managed together by the release owner.
+The native connector contract dates to **Liaison 0.6.0**, verified with Lode/Lun
+0.3.0 and Typednotes 0.6.0.
 
 > Lean checks authority and local bounds. HMAC verifies warrants; Postgres
 > implements hold transitions. Concurrent spend isolation remains a separate
@@ -236,6 +235,11 @@ Requires the Lean toolchain in [`lean-toolchain`](https://github.com/typednotes/
 OpenSSL/zlib headers for `linen`'s native code (`brew install libpq pkg-config
 openssl` plus the macOS Command Line Tools SDK; on Debian/Ubuntu, see the
 `apt-get` line in [`Dockerfile`](https://github.com/typednotes/liaison/blob/main/Dockerfile)).
+Linen supplies the PostgreSQL and zlib link settings through imports. The
+broker executable loads those shared libraries from Linen's build directory.
+On macOS, if the bundled linker reports an unknown `arm64e.x1-macos` target,
+select an installed macOS 26 SDK for the build, for example
+`export SDKROOT=$(xcrun --sdk macosx26.5 --show-sdk-path)`.
 
 ### Test
 
@@ -336,8 +340,8 @@ match ← decodeReply httpStatus responseText with
 warrant's caveats (`Request.ofWarrant`), so the request cannot disagree with
 the warrant, and refuses an `account` that does not name the warrant's
 resource. It additionally requires the call's named operation to match the
-warrant action. The coordinated release uses Linen 1.10.0 and Liaison 0.6.0;
-the local override workspace verifies their working trees before release tags.
+warrant action. The local override workspace builds the writer SDK against
+this checkout to verify the wire contract.
 
 ## Credentials
 
