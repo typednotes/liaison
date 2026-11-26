@@ -7,11 +7,14 @@ Releases before 0.7.1 are described in their git tags and in `docs/release-*.md`
 
 ## [Unreleased]
 
+## [0.7.2] — 2026-11-26
+
 ### Changed
 
-- `autoImplicit` is back to Lean's default (on): it automates implicit binders,
-  which are still fully checked, so it is not a weakening (agents-md standard v4).
-  Warnings still fail the build (`lake build --wfail`).
+- Upgrade to Linen 3.0.0. Lake links the PostgreSQL and zlib shims through
+  imports, and the Docker runtime includes both shared libraries.
+- Restored Lean's default implicit binders. Lean still checks their types,
+  and warnings still fail the build (`lake build --wfail`).
 
 ## [0.7.1] — 2026-11-17
 
@@ -20,3 +23,6 @@ Releases before 0.7.1 are described in their git tags and in `docs/release-*.md`
 - Builds are stricter: implicit auto-bound variables are disabled, CI treats
   every compiler warning as an error, and the native Signal/WhatsApp crates must
   pass Clippy with no warnings. No behavior, wire or permission change.
+
+[Unreleased]: https://github.com/typednotes/liaison/compare/v0.7.2...HEAD
+[0.7.2]: https://github.com/typednotes/liaison/compare/v0.7.1...v0.7.2
