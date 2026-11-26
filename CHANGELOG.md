@@ -7,6 +7,18 @@ Releases before 0.7.1 are described in their git tags and in `docs/release-*.md`
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-11-26
+
+### Added
+
+- Periodic connector OAuth refresh alongside refresh before use.
+- A password-protected credential status page with expiry and refresh counts.
+- OS keychain and OpenBao KV v2 credential storage alongside typednotes/secrets.
+
+### Changed
+
+- Package Linen's keychain shim and its runtime dependency in the Docker image.
+
 ## [0.7.2] — 2026-11-26
 
 ### Changed
@@ -23,6 +35,3 @@ Releases before 0.7.1 are described in their git tags and in `docs/release-*.md`
 - Builds are stricter: implicit auto-bound variables are disabled, CI treats
   every compiler warning as an error, and the native Signal/WhatsApp crates must
   pass Clippy with no warnings. No behavior, wire or permission change.
-
-[Unreleased]: https://github.com/typednotes/liaison/compare/v0.7.2...HEAD
-[0.7.2]: https://github.com/typednotes/liaison/compare/v0.7.1...v0.7.2

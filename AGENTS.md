@@ -344,11 +344,14 @@ These project rules take precedence over the Permissions section above.
 - `Liaison/Egress/Secrets.lean` — `typednotes/secrets` HTTP client
   (`SecretsConfig` with `userpass` login + cached token or static token,
   `fetchCredential`, `writeCredential`) and independent connection, organization
-  and warrant-keyed run policy reads on every native call.
+  and warrant-keyed run policy reads on every native call. The same logical
+  paths work in the OS keychain and OpenBao KV v2. See `docs/secrets.md`.
 - `Liaison/Egress/OAuth.lean` — refresh for Google, Dropbox, GitLab and Microsoft
   (`OAuthClients`, one optional client per issuer from
   `{GOOGLE,DROPBOX,GITLAB,MICROSOFT}_CLIENT_ID`/`_SECRET`; token endpoints fixed per
   issuer; `refreshForm`, `parseTokenResponse`, `refreshToken`).
+- `Liaison/Egress/Refresh.lean` and `Inventory.lean` — OAuth write-back and
+  refresh coordination, credential discovery, and the operator status page.
 - `Liaison/Egress/S3.lean` — SigV4 for `s3` credentials over `linen`'s
   `Crypto.SigV4.sign` (`s3Canonical`, `s3AuthHeaders`).
 - `Liaison/Egress/Provider.lean` — `EgressConfig`, native `callConnector`, private
@@ -460,9 +463,10 @@ The following are actual limits, not completed native workflow blockers:
   own design. The codecs and actual HTTP/Postgres connector path are tested
   locally. Typednotes' Rust client keeps a matching native format; migration of
   app/writer/runtime callers is complete. HTTP expiry uses the broker clock.
-- **Concurrent OAuth refreshes are not coalesced**: two requests that both
-  see a due token may both attempt refresh/write-back. Rotating refresh tokens
-  (notably GitLab) make such races a genuine reconnect risk.
+- **OAuth refresh coordination is process-local.** Run one broker per set of
+  refreshable credentials. OpenBao conditional writes protect storage against
+  concurrent edits. Rotation recovery after a failed write can require
+  reconnecting if the broker exits before persisting the new token.
 - **S3 requests sign only `host`, `x-amz-content-sha256`, `x-amz-date`**;
   native headers (e.g. `content-type`) and the credential's static headers
   are sent unsigned, so a static `x-amz-*` header in an `s3` credential would

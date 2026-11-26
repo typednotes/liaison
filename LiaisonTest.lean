@@ -15,6 +15,7 @@ import LiaisonTest.Liaison.Egress.RepositoryTest
 import LiaisonTest.Liaison.Egress.GitPackTest
 import LiaisonTest.Liaison.Egress.SecretsTest
 import LiaisonTest.Liaison.Egress.OAuthTest
+import LiaisonTest.Liaison.Egress.RefreshTest
 import LiaisonTest.Liaison.Egress.S3Test
 import LiaisonTest.Liaison.Egress.ProviderTest
 import LiaisonTest.Liaison.ServerTest

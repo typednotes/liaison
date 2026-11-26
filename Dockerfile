@@ -23,7 +23,7 @@ COPY . .
 RUN lake build liaison
 
 FROM docker.io/library/ubuntu:24.04 AS runtime
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libpq5 zlib1g libssl3t64 libsqlite3-0 \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libpq5 zlib1g libssl3t64 libsqlite3-0 libsecret-1-0 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --no-create-home --uid 10001 liaison
 # Lean's toolchain links a static OpenSSL whose compile-time OPENSSLDIR is
@@ -38,6 +38,7 @@ COPY --from=builder /app/.lake/build/bin/liaison /usr/local/bin/liaison
 # Linen embeds the absolute paths of these shims in the executable.
 COPY --from=builder /app/.lake/packages/linen/.lake/build/ffi/liblinen_postgres.so /app/.lake/packages/linen/.lake/build/ffi/
 COPY --from=builder /app/.lake/packages/linen/.lake/build/ffi/liblinen_zlib.so /app/.lake/packages/linen/.lake/build/ffi/
+COPY --from=builder /app/.lake/packages/linen/.lake/build/ffi/liblinen_keychain.so /app/.lake/packages/linen/.lake/build/ffi/
 COPY --from=paired /native/signal/target/release/libliaison_signal.so /usr/local/lib/libliaison_signal.so
 COPY --from=paired /native/whatsapp/target/release/libliaison_whatsapp.so /usr/local/lib/libliaison_whatsapp.so
 ENV LIAISON_SIGNAL_LIBRARY=/usr/local/lib/libliaison_signal.so \

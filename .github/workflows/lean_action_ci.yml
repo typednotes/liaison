@@ -28,6 +28,7 @@ jobs:
           test: false
           build-args: "--wfail"
       - run: LIAISON_ROOT_KEY=$(openssl rand -hex 32) lake test
+      - run: python3 LiaisonTest/integration/secrets_status.py --temp-root "$RUNNER_TEMP"
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.97.1

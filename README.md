@@ -34,11 +34,16 @@ It implements the service described in
 [`docs/services/broker.md`](https://github.com/typednotes/typednotes/blob/main/docs/services/broker.md) and [`docs/services/ledger.md`](https://github.com/typednotes/typednotes/blob/main/docs/services/ledger.md), and is built on
 [`linen`](https://github.com/typednotes/linen/tree/main).
 
+**Liaison 0.8.0** adds background OAuth refresh, an operator credential status
+page, and OS keychain and OpenBao storage modes. See the
+[credential storage guide](docs/secrets.md) and [changelog](CHANGELOG.md).
+
 **Liaison 0.7.2** builds with Linen 3.0.0. See the [changelog](CHANGELOG.md).
 **Liaison 0.7.1** introduced stricter Lean builds and Clippy on the native crates
 ([release notes](https://github.com/typednotes/liaison/blob/main/docs/release-0.7.1.md)).
-It keeps the **Liaison 0.7.0** feature release: native QR-linked Signal and
-WhatsApp messaging, using Rust libraries loaded inside the broker. See the
+
+**Liaison 0.7.0** introduced native QR-linked Signal and WhatsApp messaging
+using Rust libraries loaded inside the broker. See the
 [release notes](https://github.com/typednotes/liaison/blob/main/docs/release-0.7.0.md)
 and [native adapter setup](https://github.com/typednotes/liaison/blob/main/native/README.md).
 The native connector contract dates to **Liaison 0.6.0**, verified with Lode/Lun
@@ -235,8 +240,8 @@ Requires the Lean toolchain in [`lean-toolchain`](https://github.com/typednotes/
 OpenSSL/zlib headers for `linen`'s native code (`brew install libpq pkg-config
 openssl` plus the macOS Command Line Tools SDK; on Debian/Ubuntu, see the
 `apt-get` line in [`Dockerfile`](https://github.com/typednotes/liaison/blob/main/Dockerfile)).
-Linen supplies the PostgreSQL and zlib link settings through imports. The
-broker executable loads those shared libraries from Linen's build directory.
+The broker executable loads Linen's PostgreSQL, zlib, and keychain shims
+from Linen's build directory.
 On macOS, if the bundled linker reports an unknown `arm64e.x1-macos` target,
 select an installed macOS 26 SDK for the build, for example
 `export SDKROOT=$(xcrun --sdk macosx26.5 --show-sdk-path)`.
@@ -344,6 +349,10 @@ warrant action. The local override workspace builds the writer SDK against
 this checkout to verify the wire contract.
 
 ## Credentials
+
+[Configure credential storage and status](docs/secrets.md) for typednotes/secrets,
+the OS keychain or OpenBao.
+
 
 Read from `secret/data/thirdparty/{provider}/{account}`; the `data` object is
 one of (every value a JSON string; optional `headers`: static headers added to

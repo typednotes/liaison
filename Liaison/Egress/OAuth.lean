@@ -7,8 +7,8 @@
   `liaison`'s own wall clock), `liaison` exchanges the `refresh_token` at the
   issuer's token endpoint (`grant_type=refresh_token`, form encoded, with the
    issuer's `{GOOGLE,DROPBOX,GITLAB,MICROSOFT}_CLIENT_ID`/`_CLIENT_SECRET`), uses the
-  new access token, and writes the updated credential back to the vault —
-  best-effort, see `Provider.lean`.
+  new access token after the refreshed credential has been stored.
+  See `Refresh.lean` for coordination and retry behavior.
 
   | Issuer | Token endpoint | Refresh token |
   |---|---|---|
@@ -118,10 +118,16 @@ structure TokenResponse where
     all answer in this shape. -/
 def parseTokenResponse (body : String) : Option TokenResponse := do
   let root ← (Data.Json.Decode.decode body).toOption
+  unless Wire.uniqueKeys root do none
   let accessToken ← root.lookup "access_token" |>.bind Value.asString
   if accessToken.isEmpty then none
   let expiresIn ← root.lookup "expires_in" |>.bind jsonNat?
-  let refreshToken := root.lookup "refresh_token" |>.bind Value.asString
+  if expiresIn == 0 then none
+  let refreshToken ← match root.lookup "refresh_token" with
+    | none => some none
+    | some value => do
+      let token ← value.asString
+      if token.isEmpty then none else some (some token)
   return { accessToken, expiresIn, refreshToken }
 
 /-- `POST https://{tokenHost}{tokenPath}`. `.error` (never a throw) on a
@@ -144,7 +150,7 @@ def refreshToken (issuer : OAuthIssuer) (client : OAuthClient) (refreshToken : S
     match (String.fromUTF8? resp.body).bind parseTokenResponse with
     | some t => return .ok t
     | none => return .error s!"{name} token refresh: unexpected response shape"
-  catch e =>
-    return .error s!"{name} token refresh failed: {e}"
+  catch _ =>
+    return .error s!"{name} token refresh transport failed"
 
 end Liaison.Egress

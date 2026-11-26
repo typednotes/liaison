@@ -301,7 +301,7 @@ def main():
                 return run("psql", database, "-X", "-v", "ON_ERROR_STOP=1", "-At", "-c", statement).strip()
             sql("create table credit_holds (id uuid primary key default gen_random_uuid(), org_id uuid, run_id uuid, amount bigint, state text, expires_at timestamptz); create table credit_ledger (id uuid default gen_random_uuid(), org_id uuid, run_id uuid, delta bigint, reason text);" + (Path(__file__).resolve().parents[2] / "sql/0001_audit_log.sql").read_text())
             sql(f"insert into credit_ledger (org_id,run_id,delta,reason) values ('{org}','{run_id}',10000,'fixture')")
-            env = dict(os.environ, LIAISON_ROOT_KEY=root_key.hex(), DATABASE_URL=database, SECRETS_HOST="127.0.0.1", SECRETS_PORT=str(vault.server_port), SECRETS_INSECURE="1", SECRETS_TOKEN="local-vault-fixture", LIAISON_PORT=str(broker_port))
+            env = dict(os.environ, LIAISON_ROOT_KEY=root_key.hex(), DATABASE_URL=database, SECRETS_HOST="127.0.0.1", SECRETS_PORT=str(vault.server_port), SECRETS_BACKEND="typednotes", SECRETS_REFRESH_INTERVAL_SECONDS="0", SECRETS_INSECURE="1", SECRETS_TOKEN="local-vault-fixture", LIAISON_PORT=str(broker_port))
             paired_dir = directory / "devices"
             paired_dir.mkdir(mode=0o700)
             env["LIAISON_PAIRED_DIR"] = str(paired_dir)
@@ -310,7 +310,7 @@ def main():
             if options.paired_whatsapp_library:
                 env["LIAISON_WHATSAPP_LIBRARY"] = str(options.paired_whatsapp_library.resolve())
             for name in list(env):
-                if name.endswith(("_CLIENT_ID", "_CLIENT_SECRET")) or name in ("SECRETS_USERNAME", "SECRETS_PASSWORD"):
+                if name.endswith(("_CLIENT_ID", "_CLIENT_SECRET")) or name in ("SECRETS_USERNAME", "SECRETS_PASSWORD", "SECRETS_STATUS_PASSWORD"):
                     del env[name]
             with (directory / "broker.log").open("w") as log:
                 process = subprocess.Popen([str(options.broker)], env=env, stdout=log, stderr=log)
