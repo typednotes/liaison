@@ -1,14 +1,10 @@
 import Liaison
+import Liaison.Egress.Inventory
 import Linen.Network.WebApp.Server
 
-/-- Entry point. Reads `LIAISON_ROOT_KEY`, `DATABASE_URL`, `SECRETS_HOST`/
-    `SECRETS_PORT`/`SECRETS_INSECURE` plus `SECRETS_USERNAME`+`SECRETS_PASSWORD`
-    or `SECRETS_TOKEN` (see `Liaison.Egress.SecretsConfig.fromEnv`), the
-    optional `{GOOGLE,DROPBOX,GITLAB}_CLIENT_ID`/`_CLIENT_SECRET`, and `LIAISON_PORT`
-    (default `8080`), then serves `Liaison.application` (`POST /v0/egress`,
-    `GET /_health`). Fails loudly (via the `IO.userError`s in
-    `RootKey.fromEnv`/`SecretsConfig.fromEnv`) rather than starting with a
-    default key or a missing `secrets` client. -/
+/-- Run the broker with the environment-selected credential store and refresh
+    worker. The middleware exposes the operator page when enabled. See
+    `docs/secrets.md` for storage, monitoring, and dashboard settings. -/
 def main : IO Unit := do
   let rootKey ← Liaison.RootKey.fromEnv
   let databaseUrl ← match ← IO.getEnv "DATABASE_URL" with
@@ -24,5 +20,10 @@ def main : IO Unit := do
     else
       throw <| IO.userError "DATABASE_URL is empty"
   let pool ← Database.SQL.Pool.Pool.create { connSettings }
+  let inventory ← Liaison.Egress.Inventory.fromEnv
+  let maintenance ← inventory.start egressCfg
   IO.println s!"liaison listening on :{port}"
-  Network.WebApp.Server.run port (Liaison.application rootKey pool egressCfg)
+  try
+    Network.WebApp.Server.run port (inventory.withStatus (Liaison.application rootKey pool egressCfg))
+  finally
+    if let some task := maintenance then IO.cancel task

@@ -4,8 +4,8 @@ The broker implements the current URL-free Lode requests in
 `Lode.Model`, `Lode.Liaison` and `Lode.Workspace`, including conversation/tool
 replay and checkout/publication. These modes consume the same verified warrant,
 real SQL reservation and four independently owned ceilings as other connectors.
-The coordinated release line is Liaison 0.6.0 / Linen 1.10.0, with Lode/Lun
-0.3.0 and Typednotes 0.6.0; versions, pins and tags are release-owner managed.
+The original coordinated release used Liaison 0.6.0, Linen 1.10.0, Lode/Lun
+0.3.0 and Typednotes 0.6.0. The broker now builds against Linen 3.0.0.
 
 ## Trusted run extensions
 
@@ -184,8 +184,8 @@ publishes with a native atomic head condition:
 Both return `{"commit":"immutable-new-commit"}`. Stale heads and concurrent
 rewinds fail closed. GitLab's protocol route is a fixed provider-owned origin
 mapping (`/api/v4` to the same host's repository route), not generic HTTP scope
-widening. Zlib pack compression uses Linen's existing FFI; the consumer link
-names the macOS SDK stub or Linux zlib library, and the image requires `zlib1g`.
+widening. Zlib pack compression uses Linen's FFI. Lake links Linen's zlib shim
+through its imports, and the image includes the shim and `zlib1g`.
 
 `AuthorizedPlan` is payload-indexed and privately constructed. It carries the
 exact parse derivation, trusted branch/root and every changed selector's

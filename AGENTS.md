@@ -11,9 +11,10 @@ this project. `CLAUDE.md` imports this file; edit this one.
 described in `typednotes/typednotes`'s `docs/services/broker.md` and
 `docs/services/ledger.md`: verify a macaroon-style warrant, enforce a credit
 hold, execute (or refuse) a bounded native operation, record the attempt.
-The coordinated release line is Liaison **0.6.0**, Linen **1.10.0**, Lode/Lun
-**0.3.0** and Typednotes **0.6.0**. The release owner manages actual versions,
-dependency pins, commits and tags together.
+The original coordinated connector release used Liaison **0.6.0**, Linen
+**1.10.0**, Lode/Lun **0.3.0** and Typednotes **0.6.0**. This checkout builds
+against Linen **3.0.0**. The release owner manages versions, dependency pins,
+commits and tags together.
 
 | Task | Command |
 | --- | --- |
@@ -188,7 +189,7 @@ experiments are logged too.
 ### Types: use the strongest standard checking the language offers, maximally
 
 - Use the standard type-checker of the language/framework in its strictest practical mode, run it in
-  CI, and keep it at zero errors. In this project: Lean 4 (toolchain `leanprover/lean4:v4.34.0`, pinned in `lean-toolchain`), type-checked by `lake build`, with every theorem checked by Lean's kernel. `autoImplicit` stays on (Lean's default: it only automates implicit binders, which are still fully checked), and CI builds with `--wfail` (`leanprover/lean-action@v1` `build-args`): warnings, including `declaration uses 'sorry'`, fail the build. Run `lake build --wfail` locally. "No `partial def`" remains a project convention (see Project-specific notes), not a compiler-enforced setting. The Rust crates under `native/` (`paired`, `signal`, `whatsapp`, `fixture` with and without its `whatsapp` feature) are built and tested in CI with `cargo build --locked` / `cargo test --locked` and linted with `cargo clippy --locked --all-targets -- -D warnings` (toolchain 1.97.1): clippy warnings fail CI.
+  CI, and keep it at zero errors. In this project: Lean 4 (toolchain `leanprover/lean4:v4.36.0`, pinned in `lean-toolchain`), type-checked by `lake build`, with every theorem checked by Lean's kernel. `autoImplicit` stays on (Lean's default: it only automates implicit binders, which are still fully checked), and CI builds with `--wfail` (`leanprover/lean-action@v1` `build-args`): warnings, including `declaration uses 'sorry'`, fail the build. Run `lake build --wfail` locally. "No `partial def`" remains a project convention (see Project-specific notes), not a compiler-enforced setting. The Rust crates under `native/` (`paired`, `signal`, `whatsapp`, `fixture` with and without its `whatsapp` feature) are built and tested in CI with `cargo build --locked` / `cargo test --locked` and linted with `cargo clippy --locked --all-targets -- -D warnings` (toolchain 1.97.1): clippy warnings fail CI.
 - Make illegal states unrepresentable: precise types, enums/sum types over strings and flags, new
   types for identifiers and units, immutable data by default. Avoid `Any`, casts and ignores; when
   one is unavoidable, scope it narrowly and justify it in a comment.
@@ -343,11 +344,14 @@ These project rules take precedence over the Permissions section above.
 - `Liaison/Egress/Secrets.lean` — `typednotes/secrets` HTTP client
   (`SecretsConfig` with `userpass` login + cached token or static token,
   `fetchCredential`, `writeCredential`) and independent connection, organization
-  and warrant-keyed run policy reads on every native call.
+  and warrant-keyed run policy reads on every native call. The same logical
+  paths work in the OS keychain and OpenBao KV v2. See `docs/secrets.md`.
 - `Liaison/Egress/OAuth.lean` — refresh for Google, Dropbox, GitLab and Microsoft
   (`OAuthClients`, one optional client per issuer from
   `{GOOGLE,DROPBOX,GITLAB,MICROSOFT}_CLIENT_ID`/`_SECRET`; token endpoints fixed per
   issuer; `refreshForm`, `parseTokenResponse`, `refreshToken`).
+- `Liaison/Egress/Refresh.lean` and `Inventory.lean` — OAuth write-back and
+  refresh coordination, credential discovery, and the operator status page.
 - `Liaison/Egress/S3.lean` — SigV4 for `s3` credentials over `linen`'s
   `Crypto.SigV4.sign` (`s3Canonical`, `s3AuthHeaders`).
 - `Liaison/Egress/Provider.lean` — `EgressConfig`, native `callConnector`, private
@@ -459,9 +463,10 @@ The following are actual limits, not completed native workflow blockers:
   own design. The codecs and actual HTTP/Postgres connector path are tested
   locally. Typednotes' Rust client keeps a matching native format; migration of
   app/writer/runtime callers is complete. HTTP expiry uses the broker clock.
-- **Concurrent OAuth refreshes are not coalesced**: two requests that both
-  see a due token may both attempt refresh/write-back. Rotating refresh tokens
-  (notably GitLab) make such races a genuine reconnect risk.
+- **OAuth refresh coordination is process-local.** Run one broker per set of
+  refreshable credentials. OpenBao conditional writes protect storage against
+  concurrent edits. Rotation recovery after a failed write can require
+  reconnecting if the broker exits before persisting the new token.
 - **S3 requests sign only `host`, `x-amz-content-sha256`, `x-amz-date`**;
   native headers (e.g. `content-type`) and the credential's static headers
   are sent unsigned, so a static `x-amz-*` header in an `s3` credential would

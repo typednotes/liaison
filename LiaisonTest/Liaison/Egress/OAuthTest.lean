@@ -51,13 +51,16 @@ private def parsed (s : String) : Option (String × Nat × Option String) :=
 #guard parsed ("{\"access_token\": \"msa\", \"token_type\": \"Bearer\", \"expires_in\": 3599, " ++
   "\"refresh_token\": \"msr2\", \"scope\": \"User.Read Calendars.Read\"}") ==
   some ("msa", 3599, some "msr2")
--- `expires_in` must be a non-negative JSON integer.
+-- `expires_in` must be a positive JSON integer.
 #guard parsed "{\"access_token\": \"a\", \"expires_in\": \"3600\"}" == none
 #guard parsed "{\"access_token\": \"a\", \"expires_in\": 1.5}" == none
 #guard parsed "{\"access_token\": \"a\", \"expires_in\": -1}" == none
 #guard parsed "{\"access_token\": \"a\"}" == none
 #guard parsed "{\"access_token\": \"\", \"expires_in\": 3600}" == none
 #guard parsed "{\"error\": \"invalid_grant\"}" == none
+#guard parsed "{\"access_token\": \"a\", \"expires_in\": 0}" == none
+#guard parsed "{\"access_token\": \"a\", \"expires_in\": 3600, \"refresh_token\": \"\"}" == none
+#guard parsed "{\"access_token\": \"a\", \"access_token\": \"b\", \"expires_in\": 3600}" == none
 #guard parsed "not json" == none
 
 example : OAuthIssuer → OAuthClient → String → IO (Except String TokenResponse) := refreshToken

@@ -16,6 +16,10 @@ namespace LiaisonTests.Liaison.Egress.Secrets
 
 #guard credentialPath ⟨"github"⟩ "u1/c2" == "/v1/secret/data/thirdparty/github/u1/c2"
 
+#guard (SecretId.parse "thirdparty/openai/u/p").map (·.path) == some "thirdparty/openai/u/p"
+#guard (SecretId.parse "thirdparty/openai/u/p/permissions").isNone
+#guard (SecretId.parse "thirdparty/openai/u/../p").isNone
+
 -- userpass login → token + expiry `now + lease_duration`.
 #guard (parseLogin "{\"auth\": {\"client_token\": \"hvs.x\", \"lease_duration\": 3600, \"policies\": [\"liaison\"]}}" 1000).map
   (fun t => (t.token, t.expiresAt)) == some ("hvs.x", some 4600)

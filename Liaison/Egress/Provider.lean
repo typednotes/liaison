@@ -1,13 +1,13 @@
 /-
-  Liaison.Egress.Provider — the only functions that can make an outbound
-  call.
+  Liaison.Egress.Provider — the entry points for native connector
+  operations and the legacy provider and inference refusals.
 
   `callConnector`, `callProvider` and `callInference` take a `Reserved r`, and there is
   no other way to obtain one (`Liaison.Budget.Reserved` has no public
   constructor other than `withReservation`). This is the chokepoint
   property `broker.md` §6 describes as "held by typing rather than by
-  review" — no outbound call is reachable without a verified warrant and a
-  reserved budget.
+  review" — every native connector operation needs a verified warrant and a
+  reserved budget. Credential lifecycle work uses its own fixed issuer endpoints.
 
   Native `callConnector` intersects independently stored organization,
   connection, cell and warrant ceilings, prepares a typed native transport,
@@ -23,7 +23,7 @@ import Liaison.Wire
 import Liaison.Clock
 import Liaison.Egress.Secrets
 import Liaison.Egress.Policy
-import Liaison.Egress.OAuth
+import Liaison.Egress.Refresh
 import Liaison.Egress.S3
 import Liaison.Egress.Connector
 import Liaison.Egress.GitPack
@@ -46,6 +46,7 @@ structure EgressConfig where
       issuer's credentials still work until their token is due, and a due
       refresh is `credential_unavailable`. -/
   oauth   : OAuthClients
+  refresh : RefreshState
 
 /-- `SecretsConfig.fromEnv` (fails loudly) and `OAuthClients.fromEnv`
     (each optional). -/
@@ -55,7 +56,7 @@ def EgressConfig.fromEnv : IO EgressConfig := do
   for issuer in [OAuthIssuer.google, .dropbox, .gitlab, .microsoft] do
     if (oauth.get issuer).isNone then
       IO.eprintln s!"liaison: {issuer.envPrefix}_CLIENT_ID/{issuer.envPrefix}_CLIENT_SECRET unset; {issuer.kindName} refresh disabled"
-  return { secrets, oauth }
+  return { secrets, oauth, refresh := ← RefreshState.create }
 
 /-- The authentication headers of a non-S3 credential: `Authorization:
     Bearer …` for `bearer` and the OAuth kinds, `{header}: {token}` for
@@ -74,31 +75,6 @@ def staticAuthHeaders : CredentialAuth → Option (List (String × String))
 def credentialQuery : CredentialAuth → String
   | .azureSas sas => sas
   | _ => ""
-
-/-- An OAuth credential whose token is due is refreshed at its issuer and
-    the updated credential written back (best-effort: a write-back failure
-    is logged to stderr, not fatal — but GitLab rotates its refresh token,
-    so such a connection must then be reconnected). Any other credential,
-    or a token not yet due, is returned as is. `.error` when a refresh is
-    due but impossible (no client configured for the issuer) or fails. -/
-private def ensureFresh (cfg : EgressConfig) (provider : Provider) (account : String)
-    (cred : Credential) : IO (Except String Credential) := do
-  match cred.auth with
-  | .oauth issuer _ refreshToken' expiresAt =>
-    let now ← nowUnixSeconds
-    if !needsRefresh expiresAt now then return .ok cred
-    let some client := cfg.oauth.get issuer
-      | return .error s!"{issuer.kindName} token is due but {issuer.envPrefix}_CLIENT_ID/SECRET are unset"
-    match ← refreshToken issuer client refreshToken' with
-    | .error e => return .error e
-    | .ok t =>
-      let updated := cred.refreshed t.accessToken (now + t.expiresIn) t.refreshToken
-      match ← writeCredential cfg.secrets provider account updated with
-      | .ok () => pure ()
-      | .error e =>
-        IO.eprintln s!"liaison: refreshed {provider.value} token not written back: {e}"
-      return .ok updated
-  | _ => return .ok cred
 
 /-- GitHub rejects requests without a nonblank User-Agent. The common native
     transport also covers relationship preflights and repository REST/GraphQL
@@ -749,15 +725,15 @@ def callConnector {r : Liaison.Request} (cfg : EgressConfig) (call : Wire.Connec
   let some authorized := Control.Monad.Effect.Connector.AuthorizedResource.check? authority call.operation call.resource
     | return .error .resourceDenied
   if call.payload.toUTF8.size > authority.maxRequestBytes then return .error .capabilityDenied
-  let credential ← match ← fetchCredential cfg.secrets r.provider call.account with
-    | .error _ => return .error .credentialUnavailable
-    | .ok credential => pure credential
-  let prepared ← match Connector.prepare authority call.operation authorized credential.baseUrl call.account call.payload call.context policy.conversation policy.publication with
+  let id : SecretId := ⟨r.provider.value, call.account⟩
+  let .ok stored ← loadCredential cfg.secrets id | return .error .credentialUnavailable
+  let prepared ← match Connector.prepare authority call.operation authorized stored.credential.baseUrl call.account call.payload call.context policy.conversation policy.publication with
     | .error _ => return .error .capabilityDenied
     | .ok prepared => pure prepared
-  let credential ← match ← ensureFresh cfg r.provider call.account credential with
-    | .error _ => return .error .credentialUnavailable
-    | .ok credential => pure credential
+  let .ok fresh ← cfg.refresh.ensureFresh cfg.secrets.refreshStore cfg.oauth id stored
+    | return .error .credentialUnavailable
+  let credential := fresh.credential
+  unless credential.baseUrl == stored.credential.baseUrl do return .error .credentialUnavailable
   sendConnector cfg credential prepared reserved
 
 /-- Device provisioning is a separate signed application control plane, never a

@@ -7,8 +7,18 @@ Releases before 0.7.1 are described in their git tags and in `docs/release-*.md`
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-11-26
+
+### Added
+
+- Periodic connector OAuth refresh alongside refresh before use.
+- A password-protected credential status page with expiry and refresh counts.
+- OS keychain and OpenBao KV v2 credential storage alongside typednotes/secrets.
+
 ### Changed
 
+- Upgrade to Linen 3.0.0. Lake links the native shims through imports,
+  and the Docker runtime includes the PostgreSQL, zlib and keychain libraries.
 - `autoImplicit` is back to Lean's default (on): it automates implicit binders,
   which are still fully checked, so it is not a weakening (agents-md standard v4).
   Warnings still fail the build (`lake build --wfail`).
