@@ -17,11 +17,16 @@ Releases before 0.7.1 are described in their git tags and in `docs/release-*.md`
 
 ### Changed
 
-- Upgrade to Linen 3.0.0. Lake links the native shims through imports,
-  and the Docker runtime includes the PostgreSQL, zlib and keychain libraries.
-- `autoImplicit` is back to Lean's default (on): it automates implicit binders,
-  which are still fully checked, so it is not a weakening (agents-md standard v4).
-  Warnings still fail the build (`lake build --wfail`).
+- Package Linen's keychain shim and its runtime dependency in the Docker image.
+
+## [0.7.2] — 2026-11-26
+
+### Changed
+
+- Upgrade to Linen 3.0.0. Lake links the PostgreSQL and zlib shims through
+  imports, and the Docker runtime includes both shared libraries.
+- Restored Lean's default implicit binders. Lean still checks their types,
+  and warnings still fail the build (`lake build --wfail`).
 
 ## [0.7.1] — 2026-11-17
 
