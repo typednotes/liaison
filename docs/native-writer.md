@@ -5,7 +5,7 @@ The broker implements the current URL-free Lode requests in
 replay and checkout/publication. These modes consume the same verified warrant,
 real SQL reservation and four independently owned ceilings as other connectors.
 The original coordinated release used Liaison 0.6.0, Linen 1.10.0, Lode/Lun
-0.3.0 and Typednotes 0.6.0. The broker now builds against Linen 3.0.0.
+0.3.0 and Typednotes 0.6.0. The broker now builds against Linen 4.0.0.
 
 ## Trusted run extensions
 

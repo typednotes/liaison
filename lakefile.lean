@@ -1,10 +1,10 @@
 import Lake
 open System Lake DSL
 
-require linen from git "https://github.com/typednotes/linen" @ "v3.0.0"
+require linen from git "https://github.com/typednotes/linen" @ "037925bc5068c54efd86690b78b258b9c6787959"
 
 package liaison where
-  version := v!"0.7.2"
+  version := v!"0.7.3"
   testDriver := "LiaisonTest"
 
 target paired.o pkg : FilePath := do
