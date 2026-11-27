@@ -49,7 +49,7 @@ using Rust libraries loaded inside the broker. See the
 [release notes](https://github.com/typednotes/liaison/blob/main/docs/release-0.7.0.md)
 and [native adapter setup](https://github.com/typednotes/liaison/blob/main/native/README.md).
 The native connector contract dates to **Liaison 0.6.0**, verified with Lode/Lun
-0.3.0 and Typednotes 0.6.0.
+0.3.0 and Typednotes 0.6.0. This checkout uses Linen 5.0.0.
 
 > Lean checks authority and local bounds. HMAC verifies warrants; Postgres
 > implements hold transitions. Concurrent spend isolation remains a separate
