@@ -10,7 +10,7 @@ RUN cargo build --locked --release --manifest-path signal/Cargo.toml \
 FROM docker.io/library/ubuntu:24.04 AS builder
 # Install native build dependencies from the same Linen release Lake uses.
 # Liaison imports PostgreSQL, crypto/JOSE, and zlib for bounded Git packs.
-ARG LINEN_REF=v3.0.0
+ARG LINEN_REF=v4.1.0
 ADD https://raw.githubusercontent.com/typednotes/linen/${LINEN_REF}/ci/native-deps/apt.txt /tmp/linen-apt.txt
 RUN apt-get update && apt-get install -y --no-install-recommends \
       $(sed 's/#.*//' /tmp/linen-apt.txt) \

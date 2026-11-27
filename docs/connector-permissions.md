@@ -2,7 +2,7 @@
 
 The native `Eff` broker contract was introduced in **Liaison 0.6.0** with
 **Linen 1.10.0**, **Lode/Lun 0.3.0** and **Typednotes 0.6.0**. The broker now
-builds against **Linen 3.0.0**.
+builds against **Linen 4.1.0**.
 
 The [native writer contract](native-writer.md) additionally specifies current
 conversation/function-tool replay, Radius Pi/SSE and atomic repository modes.

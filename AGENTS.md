@@ -13,7 +13,7 @@ described in `typednotes/typednotes`'s `docs/services/broker.md` and
 hold, execute (or refuse) a bounded native operation, record the attempt.
 The original coordinated connector release used Liaison **0.6.0**, Linen
 **1.10.0**, Lode/Lun **0.3.0** and Typednotes **0.6.0**. This checkout builds
-against Linen **3.0.0**. The release owner manages versions, dependency pins,
+against Linen **4.1.0**. The release owner manages versions, dependency pins,
 commits and tags together.
 
 | Task | Command |
