@@ -14,7 +14,7 @@
   <a href="https://github.com/typednotes/liaison/pkgs/container/liaison"><img src="https://img.shields.io/badge/ghcr.io-typednotes%2Fliaison-blue?logo=docker" alt="Docker image"></a>
   <a href="https://github.com/typednotes/liaison/tags"><img src="https://img.shields.io/github/v/tag/typednotes/liaison?label=version&sort=semver" alt="Version"></a>
   <a href="https://lean-lang.org/"><img src="https://img.shields.io/badge/Lean-v4.36.0-blue" alt="Lean v4.36.0"></a>
-  <a href="https://github.com/typednotes/linen"><img src="https://img.shields.io/badge/built%20on-linen%20v3.0.0-c9b896" alt="Built on linen v3.0.0"></a>
+  <a href="https://github.com/typednotes/linen"><img src="https://img.shields.io/badge/built%20on-linen%20v4.1.0-c9b896" alt="Built on linen v4.1.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License: Apache 2.0"></a>
 </p>
 
@@ -33,6 +33,8 @@ It implements the service described in
 [`typednotes/typednotes`](https://github.com/typednotes/typednotes/tree/main)'s
 [`docs/services/broker.md`](https://github.com/typednotes/typednotes/blob/main/docs/services/broker.md) and [`docs/services/ledger.md`](https://github.com/typednotes/typednotes/blob/main/docs/services/ledger.md), and is built on
 [`linen`](https://github.com/typednotes/linen/tree/main).
+
+**Liaison 0.8.1** uses Linen 4.1.0.
 
 **Liaison 0.8.0** adds background OAuth refresh, an operator credential status
 page, and OS keychain and OpenBao storage modes. See the
