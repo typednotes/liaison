@@ -19,7 +19,7 @@ jobs:
         run: bash ci/test-require-main-ci.sh
       # linen's native build dependencies, from linen's own list at the
       # version liaison requires.
-      - uses: typednotes/linen/.github/actions/setup-native-deps@v3.0.0
+      - uses: typednotes/linen/.github/actions/setup-native-deps@bcfec9a81d6e738ecb273f89e2102b4712d8e160
         with:
           keyring: false
       # `test: false`: the tests need a root key, so they run in the next step.
@@ -56,7 +56,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: typednotes/linen
-          ref: dde3a5d630c954b67bcf58695af1b3a90e72305a
+          ref: bcfec9a81d6e738ecb273f89e2102b4712d8e160
           path: linen
       - uses: actions/checkout@v7
         with:
@@ -73,7 +73,7 @@ jobs:
           repository: typednotes/typednotes
           ref: v0.6.0
           path: typednotes
-      - uses: typednotes/linen/.github/actions/setup-native-deps@v3.0.0
+      - uses: typednotes/linen/.github/actions/setup-native-deps@bcfec9a81d6e738ecb273f89e2102b4712d8e160
         with:
           keyring: false
       - uses: leanprover/lean-action@v1

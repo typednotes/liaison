@@ -7,6 +7,11 @@ Releases before 0.7.1 are described in their git tags and in `docs/release-*.md`
 
 ## [Unreleased]
 
+
+### Changed
+
+- Build with [Linen 5.0.0](https://github.com/typednotes/linen/commit/bcfec9a81d6e738ecb273f89e2102b4712d8e160).
+
 ## [0.8.0] — 2026-11-26
 
 ### Added

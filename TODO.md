@@ -8,6 +8,14 @@ Several items are **moves into linen** (see linen's `AGENTS.md`, "Importing
 external code"): do the linen change and delete liaison's copy in the same
 pass, so there are never two live copies.
 
+## Brokered MCP tools
+
+- [ ] Add a named MCP invocation operation for approved server and tool identities.
+  Bind `tools/list` and `tools/call` to the configured connection and enforce the
+  caller, organization, warrant, MCP tool, and input and output limits. Keep
+  server credentials and OAuth refresh in the broker. Coordinate the operation
+  and tool advertisement with Lode's compiled extension catalog.
+
 ## Security
 
 - [x] **Compare warrant tags in constant time.** `verifyTag` uses linen's

@@ -1,7 +1,7 @@
 import Lake
 open System Lake DSL
 
-require linen from git "https://github.com/typednotes/linen" @ "v3.0.0"
+require linen from git "https://github.com/typednotes/linen" @ "bcfec9a81d6e738ecb273f89e2102b4712d8e160"
 
 package liaison where
   version := v!"0.8.0"

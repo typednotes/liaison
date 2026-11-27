@@ -14,7 +14,7 @@
   <a href="https://github.com/typednotes/liaison/pkgs/container/liaison"><img src="https://img.shields.io/badge/ghcr.io-typednotes%2Fliaison-blue?logo=docker" alt="Docker image"></a>
   <a href="https://github.com/typednotes/liaison/tags"><img src="https://img.shields.io/github/v/tag/typednotes/liaison?label=version&sort=semver" alt="Version"></a>
   <a href="https://lean-lang.org/"><img src="https://img.shields.io/badge/Lean-v4.36.0-blue" alt="Lean v4.36.0"></a>
-  <a href="https://github.com/typednotes/linen"><img src="https://img.shields.io/badge/built%20on-linen%20v3.0.0-c9b896" alt="Built on linen v3.0.0"></a>
+  <a href="https://github.com/typednotes/linen"><img src="https://img.shields.io/badge/built%20on-linen%20v5.0.0-c9b896" alt="Built on linen v5.0.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License: Apache 2.0"></a>
 </p>
 
@@ -42,7 +42,7 @@ WhatsApp messaging, using Rust libraries loaded inside the broker. See the
 [release notes](https://github.com/typednotes/liaison/blob/main/docs/release-0.7.0.md)
 and [native adapter setup](https://github.com/typednotes/liaison/blob/main/native/README.md).
 The native connector contract dates to **Liaison 0.6.0**, verified with Lode/Lun
-0.3.0 and Typednotes 0.6.0. The current checkout builds against **Linen 3.0.0**.
+0.3.0 and Typednotes 0.6.0. This checkout uses Linen 5.0.0.
 
 > Lean checks authority and local bounds. HMAC verifies warrants; Postgres
 > implements hold transitions. Concurrent spend isolation remains a separate
